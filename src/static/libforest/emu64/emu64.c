@@ -16,6 +16,25 @@
 #ifdef TARGET_PC
 #include "pc_platform.h"
 #endif
+#ifdef TARGET_3DS
+extern int pc_emu64_frame_cmds;
+extern int pc_emu64_frame_noop_cmds;
+extern int pc_emu64_frame_tri_cmds;
+extern int pc_emu64_frame_vtx_cmds;
+extern int pc_emu64_frame_dl_cmds;
+
+static GXColor emu64_3ds_color_from_raw(u32 raw) {
+    GXColor color;
+
+    /* N64 display lists pack colors as RRGGBBAA. Do not reinterpret the raw
+     * word as GXColor on the little-endian 3DS. */
+    color.r = (raw >> 24) & 0xFF;
+    color.g = (raw >> 16) & 0xFF;
+    color.b = (raw >> 8) & 0xFF;
+    color.a = raw & 0xFF;
+    return color;
+}
+#endif
 
 // this pragma may be unnecessary
 #pragma inline_depth(1024)
@@ -3166,7 +3185,11 @@ void emu64::dirty_check(int tile, int n_tiles, int do_texture_matrix) {
     if (IS_DIRTY(EMU64_DIRTY_FLAG_PRIM_COLOR)) {
         EMU64_TIMED_SEGMENT_BEGIN();
         CLEAR_DIRTY(EMU64_DIRTY_FLAG_PRIM_COLOR);
+#ifdef TARGET_3DS
+        GXSetTevColor(GX_TEVREG1, emu64_3ds_color_from_raw(this->primitive_color.raw));
+#else
         GXSetTevColor(GX_TEVREG1, this->primitive_color.color);
+#endif
         EMU64_TIMED_SEGMENT_END(dirty_primcolor_time);
     }
 
@@ -3175,7 +3198,11 @@ void emu64::dirty_check(int tile, int n_tiles, int do_texture_matrix) {
     if (IS_DIRTY(EMU64_DIRTY_FLAG_ENV_COLOR)) {
         EMU64_TIMED_SEGMENT_BEGIN();
         CLEAR_DIRTY(EMU64_DIRTY_FLAG_ENV_COLOR);
+#ifdef TARGET_3DS
+        GXSetTevColor(GX_TEVREG2, emu64_3ds_color_from_raw(this->environment_color.raw));
+#else
         GXSetTevColor(GX_TEVREG2, this->environment_color.color);
+#endif
         EMU64_TIMED_SEGMENT_END(dirty_envcolor_time);
     }
 
@@ -3453,6 +3480,27 @@ void emu64::dl_G_DL(void) {
     Gfx* gfx = this->gfx_p;
 
     this->work_ptr = (void*)this->seg2k0(gfx->dma.addr);
+#if defined(TARGET_3DS)
+    {
+        static int segment_a_diag;
+        if ((gfx->words.w1 & 0xFF000000u) == 0x0A000000u && segment_a_diag < 16) {
+            Gfx* target = (Gfx*)this->work_ptr;
+            FILE* fp = fopen("sdmc:/3ds/acgc/segment_a_diag.txt",
+                             segment_a_diag == 0 ? "w" : "a");
+            if (fp != nullptr) {
+                fprintf(fp, "caller=%p raw=%08x target=%p first=%08x/%08x second=%08x/%08x segA=%08x\n",
+                        gfx, gfx->words.w1, target,
+                        target != nullptr ? target[0].words.w0 : 0,
+                        target != nullptr ? target[0].words.w1 : 0,
+                        target != nullptr ? target[1].words.w0 : 0,
+                        target != nullptr ? target[1].words.w1 : 0,
+                        this->segments[G_MWO_SEGMENT_A]);
+                fclose(fp);
+            }
+            segment_a_diag++;
+        }
+    }
+#endif
 #ifdef TARGET_PC
     if (this->work_ptr == NULL) {
         return;
@@ -3464,6 +3512,16 @@ void emu64::dl_G_DL(void) {
             Gfx* target = (Gfx*)this->work_ptr;
             u8 first_opcode = (u8)((target->words.w0 >> 24) & 0xFF);
             u8 first_idx = first_opcode - G_FIRST_CMD;
+            bool blank = true;
+            for (int i = 0; i < 4; ++i) {
+                if (target[i].words.w0 != 0 || target[i].words.w1 != 0) {
+                    blank = false;
+                    break;
+                }
+            }
+            if (blank) {
+                return;
+            }
             if (first_idx >= NUM_COMMANDS) {
                 return;
             }
@@ -4402,6 +4460,16 @@ void emu64::dl_G_NOOP() {
     switch (noop->tag) {
         case G_TAG_NONE:
 #ifdef TARGET_PC
+#ifdef TARGET_3DS
+            if (this->gfx.words.w1 == PC_NOOP_3DS_SCREEN_BOTTOM) {
+                pc_gx_set_render_screen(1);
+                break;
+            }
+            if (this->gfx.words.w1 == PC_NOOP_3DS_SCREEN_TOP) {
+                pc_gx_set_render_screen(0);
+                break;
+            }
+#endif
             /* PC widescreen: skip aspect correction for transitions / bg blits.
              * See pc_platform.h for how the marker/flag mechanism works. */
             if (this->gfx.words.w1 == PC_NOOP_WIDESCREEN_STRETCH) {
@@ -4924,7 +4992,7 @@ void emu64::dl_G_TRIN() {
 
     this->gfx_p += (int)n_faces - 1; /* Should equate to gfx_p--, as the emulator will increment it once. */
 
-#ifdef TARGET_PC
+#if defined(TARGET_PC) || defined(TARGET_3DS)
     /* Flush triangle batch immediately. On real HW the GXEnd is implicit,
        but our deferred vertex model needs an explicit flush so that state
        changes (viewport, projection) between batches don't affect this draw. */
@@ -5042,7 +5110,7 @@ void emu64::dl_G_QUADN() {
 
     this->gfx_p += (int)n_faces - 1; /* Should equate to gfx_p--, as the emulator will increment it once. */
 
-#ifdef TARGET_PC
+#if defined(TARGET_PC) || defined(TARGET_3DS)
     GXEnd();
 #endif
 
@@ -5150,7 +5218,7 @@ void emu64::dl_G_TRI2() {
         EMU64_TIMED_SEGMENT_END(polygons_time);
     }
 
-#ifdef TARGET_PC
+#if defined(TARGET_PC) || defined(TARGET_3DS)
     GXEnd();
 #endif
 
@@ -5577,8 +5645,45 @@ void emu64::dl_G_MOVEMEM() {
 
         case G_MV_MATRIX: {
             EMU64_LOGF("gsSPForceMatrix(%s),", this->segchk(movemem->data));
-            this->gfx_p++;                                          /* Generates two commands */
-            this->Printf0("gsSPForceMatrixはサポートしてません\n"); /* Translation: gsSPForceMatrix isn't supported */
+            this->gfx_p++; /* gsSPForceMatrix generates a following G_MW_FORCEMTX command. */
+
+            if (!this->disable_polygons) {
+                Mtx_t* mtx = (Mtx_t*)this->seg2k0(movemem->data);
+#ifdef TARGET_PC
+                if (mtx == NULL) {
+                    break;
+                }
+#endif
+                GC_Mtx mtx34;
+
+                N64Mtx_to_DOLMtx((Mtx*)mtx, mtx34);
+                bcopy(mtx34, this->model_view_mtx_stack[this->mtx_stack_size], sizeof(GC_Mtx));
+
+                if (aflags[AFLAGS_COPY_POSITION_MTX] == 0) {
+                    GC_Mtx& src = this->model_view_mtx_stack[this->mtx_stack_size];
+
+                    for (int i = 0; i < 3; i++) {
+                        this->model_view_mtx[i][0] = src[i][0];
+                        this->model_view_mtx[i][1] = src[i][1];
+                        this->model_view_mtx[i][2] = src[i][2];
+                        this->model_view_mtx[i][3] = 0.0f;
+                    }
+                } else {
+                    MTXCopy(this->model_view_mtx_stack[this->mtx_stack_size], this->model_view_mtx);
+                    this->model_view_mtx[0][3] = 0.0f;
+                    this->model_view_mtx[1][3] = 0.0f;
+                    this->model_view_mtx[2][3] = 0.0f;
+                }
+
+                if (aflags[AFLAGS_SKIP_MTX_NORMALIZATION] == 0 || this->geometry_mode & G_TEXTURE_GEN != 0) {
+                    guMtxNormalize(this->model_view_mtx);
+                }
+
+                GXLoadNrmMtxImm(this->model_view_mtx, NONSHARED_MTX);
+                MTXConcat(position_mtx, this->model_view_mtx_stack[this->mtx_stack_size],
+                          this->position_mtx_stack[this->mtx_stack_size]);
+                GXLoadPosMtxImm(this->position_mtx_stack[this->mtx_stack_size], NONSHARED_MTX);
+            }
             break;
         }
 
@@ -5771,6 +5876,29 @@ u32 emu64::emu64_taskstart_r(Gfx* dl_p) {
         EMU64_INFOF("%08x:", this->gfx_p);
         this->gfx = *this->gfx_p;
         this->gfx_cmd = this->gfx.dma.cmd;
+#if defined(TARGET_3DS)
+        {
+            static int bg_exec_started;
+            static int bg_exec_remaining;
+            if (!bg_exec_started && this->gfx.words.w0 == 0xDB060000u &&
+                this->gfx.words.w1 == 0x80000000u &&
+                this->gfx_p[1].words.w0 == 0xDE000000u) {
+                bg_exec_started = true;
+                bg_exec_remaining = 160;
+            }
+            if (bg_exec_remaining > 0) {
+                FILE* fp = fopen("sdmc:/3ds/acgc/bg_exec_diag.txt",
+                                 bg_exec_remaining == 160 ? "w" : "a");
+                if (fp != nullptr) {
+                    fprintf(fp, "dl=%p w0=%08x w1=%08x stack=%u\n",
+                            this->gfx_p, this->gfx.words.w0, this->gfx.words.w1,
+                            this->DL_stack_level);
+                    fclose(fp);
+                }
+                bg_exec_remaining--;
+            }
+        }
+#endif
         this->dl_history[this->dl_history_start++] = this->gfx_p;
         if (this->dl_history_start >= DL_HISTORY_COUNT) {
             this->dl_history_start = 0;
@@ -5786,7 +5914,7 @@ u32 emu64::emu64_taskstart_r(Gfx* dl_p) {
         }
 
         u8 cmd_index = this->gfx_cmd - G_FIRST_CMD;
-#ifdef TARGET_PC
+#if defined(TARGET_PC) || defined(TARGET_3DS)
         {
             pc_emu64_frame_cmds++;
             /* Track specific command types by opcode */
@@ -5819,9 +5947,37 @@ u32 emu64::emu64_taskstart_r(Gfx* dl_p) {
                 p[(u32)cmd_index * 2 + 1]++;
             }
         } else {
-#ifdef TARGET_PC
+#if defined(TARGET_PC) || defined(TARGET_3DS)
             static int unexpected_cmd_count = 0;
             if (unexpected_cmd_count < 5) {
+#if defined(TARGET_3DS)
+                if (unexpected_cmd_count == 0) {
+                    FILE* fp = fopen("sdmc:/3ds/acgc/emu64_diag.txt", "w");
+                    if (fp != nullptr) {
+                        fprintf(fp, "bad dl=%p cmd=%02x w0=%08x w1=%08x history_start=%u\n",
+                                this->gfx_p, this->gfx_cmd,
+                                this->gfx.words.w0, this->gfx.words.w1,
+                                this->dl_history_start);
+                        fprintf(fp, "stack_level=%u\n", this->DL_stack_level);
+                        for (u32 level = 0; level < this->DL_stack_level; ++level) {
+                            fprintf(fp, "stack[%u]=%08x\n", level, this->DL_stack[level]);
+                        }
+                        for (int back = DL_HISTORY_COUNT; back >= 1; --back) {
+                            int idx = (int)this->dl_history_start - back;
+                            while (idx < 0) idx += DL_HISTORY_COUNT;
+                            Gfx* hist = this->dl_history[idx];
+                            if (hist != nullptr) {
+                                fprintf(fp, "-%d dl=%p w0=%08x w1=%08x\n",
+                                        back, hist, hist->words.w0, hist->words.w1);
+                            }
+                        }
+                        fclose(fp);
+                    }
+                }
+#endif
+                this->Printf0("[EMU64_BAD] dl=%p cmd=%02x w0=%08x w1=%08x\n",
+                              this->gfx_p, this->gfx_cmd,
+                              this->gfx.words.w0, this->gfx.words.w1);
                 this->Printf0(
                     "予期しないコマンドがありました。中断します。(cmd=%02x)\n", this->gfx_cmd);
                 unexpected_cmd_count++;

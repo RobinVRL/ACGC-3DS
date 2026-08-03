@@ -4,19 +4,23 @@
 #include "terminal.h"
 #include "MSL_C/w_math.h"
 
-#ifdef TARGET_PC
+#if defined(TARGET_PC) || defined(TARGET_3DS)
 static_assert(sizeof(void*) == sizeof(u32), "seg2k0 pointer resolution requires 32-bit pointers");
 
 /* Executable image range from pc_main.c — BSS/data can collide with N64 segments */
+#ifdef TARGET_PC
 extern "C" unsigned int pc_image_base;
 extern "C" unsigned int pc_image_end;
 extern "C" uintptr_t pc_gbi_unpack_runtime_ptr(unsigned int packed);
+#endif
 
 u32 emu64::seg2k0(u32 segadr) {
+#ifdef TARGET_PC
     uintptr_t odd_ptr = pc_gbi_unpack_runtime_ptr(segadr);
     if (odd_ptr != 0) {
         return (u32)odd_ptr;
     }
+#endif
 
     /* Runtime GBI macros tag direct PC pointers in bit 0. Segment references
        keep the low bit clear so they still resolve through the segment table. */
@@ -30,10 +34,12 @@ u32 emu64::seg2k0(u32 segadr) {
         return segadr;
     }
 
+#ifdef TARGET_PC
     /* Check if address falls within the executable image (BSS/data/code). */
     if (segadr >= pc_image_base && segadr < pc_image_end) {
         return segadr;
     }
+#endif
 
     u32 seg = (segadr >> 24) & 0xF;
     u32 offset = segadr & 0xFFFFFF;

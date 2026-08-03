@@ -2,7 +2,11 @@
 #ifndef PC_PAUSE_MENU_H
 #define PC_PAUSE_MENU_H
 
+#ifndef TARGET_3DS
 #include <SDL.h>
+#else
+typedef struct SDL_Event SDL_Event;
+#endif
 
 #ifdef __cplusplus
 extern "C" {

@@ -8,9 +8,13 @@
 #error "This project must be compiled as 32-bit (pointer size != 4 bytes)"
 #endif
 
+#ifndef TARGET_3DS
 #define SDL_MAIN_HANDLED
 #include <SDL.h>
 #include <glad/gl.h>
+#else
+typedef uint64_t Uint64;
+#endif
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -29,7 +33,14 @@
 #define PC_SCREEN_HEIGHT  PC_GC_HEIGHT
 #define PC_WINDOW_TITLE   "Animal Crossing"
 
+#ifdef TARGET_3DS
+/* Most DOL/REL data is compiled into the 3DS process image instead of living
+ * in emulated MEM1. Reserving the full GameCube 24 MiB here duplicates that
+ * storage and, together with the 16 MiB ARAM buffer, exhausts real hardware. */
+#define PC_MAIN_MEMORY_SIZE   (8 * 1024 * 1024)
+#else
 #define PC_MAIN_MEMORY_SIZE   (24 * 1024 * 1024)
+#endif
 #define PC_ARAM_SIZE          (16 * 1024 * 1024)
 #define PC_FIFO_SIZE          (256 * 1024)
 
@@ -46,7 +57,9 @@
 #define GC_TIMER_CLOCK        (GC_BUS_CLOCK / 4)
 
 /* --- Platform headers --- */
-#ifdef _WIN32
+#if defined(TARGET_3DS)
+/* No host process-image APIs on 3DS. */
+#elif defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
@@ -63,8 +76,10 @@ extern "C" {
 #endif
 
 /* --- Global state --- */
+#ifndef TARGET_3DS
 extern SDL_Window*   g_pc_window;
 extern SDL_GLContext  g_pc_gl_context;
+#endif
 extern int           g_pc_running;
 extern int           g_pc_verbose;
 extern int           g_pc_frame_limit_override;
@@ -93,6 +108,15 @@ void pc_platform_update_window_size(void);
 #define PC_NOOP_WIDESCREEN_STRETCH     0xAC5701u
 #define PC_NOOP_WIDESCREEN_STRETCH_OFF 0xAC5700u
 extern int g_pc_widescreen_stretch;
+
+/* 3DS display-list routing. These markers stay inside the emulated command
+ * stream so UI and world geometry can be sent to different render targets
+ * without disturbing display-list ordering. */
+#define PC_NOOP_3DS_SCREEN_TOP    0xAC3D5100u
+#define PC_NOOP_3DS_SCREEN_BOTTOM 0xAC3D5101u
+#ifdef TARGET_3DS
+void pc_gx_set_render_screen(int bottom_screen);
+#endif
 
 /* --- Functions --- */
 void pc_platform_init(void);

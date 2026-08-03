@@ -7,6 +7,10 @@
 #include "dolphin/os.h"
 #include "JSystem/JUtility/TColor.h"
 
+#if defined(TARGET_PC) && defined(__cplusplus)
+extern "C" size_t strlen(const char* str);
+#endif
+
 #ifdef __cplusplus
 struct JKRAramBlock;
 struct JKRHeap;

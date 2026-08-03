@@ -1,5 +1,9 @@
 #include "m_mail_password_check.h"
 
+#ifdef TARGET_PC
+extern int __abs(int value);
+#endif
+
 #include "m_font.h"
 #include "m_room_type.h"
 #include "m_name_table.h"

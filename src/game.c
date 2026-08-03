@@ -166,6 +166,15 @@ extern void game_main(GAME* this) {
 
 static void game_init_hyral(GAME* this, size_t size) {
     u8* hyral = (u8*)gamealloc_malloc(&this->gamealloc, size);
+#ifdef TARGET_3DS
+    /* The PC compatibility GetFreeArena estimate does not account for the
+     * 3DS application's other malloc users. Retry with smaller workspaces
+     * instead of allowing THA arithmetic to wrap below address zero. */
+    while (hyral == NULL && size > 0x80000) {
+        size = (size / 2) & ~0x1F;
+        hyral = (u8*)gamealloc_malloc(&this->gamealloc, size);
+    }
+#endif
     if (hyral != NULL) {
         THA_ct(&this->tha, (char*)hyral, size);
     } else {
@@ -201,6 +210,12 @@ extern void game_resize_hyral(GAME* this, int size) {
     }
 
     hyral = (u8*)gamealloc_malloc(&this->gamealloc, (u32)size);
+#ifdef TARGET_3DS
+    while (hyral == NULL && size > 0x80000) {
+        size = (size / 2) & ~0x1F;
+        hyral = (u8*)gamealloc_malloc(&this->gamealloc, (u32)size);
+    }
+#endif
     if (hyral != NULL) {
         THA_ct(&this->tha, (char*)hyral, (u32)size);
     } else {

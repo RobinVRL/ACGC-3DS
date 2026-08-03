@@ -490,7 +490,22 @@ extern void JW_Init() {
     void* arena_hi = OSGetArenaHi();
     void* arena_lo = OSGetArenaLo();
 
+    /* JKRExpHeap::createRoot consumes its own object, block header, and OS
+     * heap descriptors before the child system heap is allocated.  The
+     * original 0xD0 subtraction leaves only one 16-byte block on this port;
+     * that is not enough for the root allocator to split the block reliably
+     * and leaves JFWSystem::systemHeap null on real 3DS hardware. */
+#ifdef TARGET_3DS
+    {
+        const u32 arena_size = (u32)arena_hi - (u32)arena_lo;
+        const u32 allocator_reserve = 0x10000;
+        SystemHeapSize = arena_size > allocator_reserve
+                             ? arena_size - allocator_reserve
+                             : arena_size / 2;
+    }
+#else
     SystemHeapSize = (u32)arena_hi - (u32)arena_lo - 0xD0;
+#endif
     JC_JFWSystem_setMaxStdHeap(1);
     JC_JFWSystem_setSysHeapSize(SystemHeapSize);
     JC_JFWSystem_setFifoBufSize(0x10001);

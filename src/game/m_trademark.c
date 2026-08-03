@@ -31,6 +31,8 @@
 #include "libc64/qrand.h"
 #include "m_common_data.h"
 #include "m_play.h"
+#include "libforest/osreport.h"
+#include "dolphin/os.h"
 
 static int mTR_first_flag = TRUE;
 

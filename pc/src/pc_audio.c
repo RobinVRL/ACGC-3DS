@@ -14,6 +14,125 @@
 
 #define PC_AUDIO_SAMPLE_RATE 32000
 
+#ifdef TARGET_3DS
+
+#include <3ds/svc.h>
+#include <3ds/thread.h>
+#include "acgc_3ds_platform.h"
+
+typedef void (*AIDMACallback)(void);
+typedef void (*AIStreamCallback)(u32);
+
+static AIDMACallback ai_dma_callback;
+static AIStreamCallback ai_stream_callback;
+static Thread audio_producer_thread;
+static volatile bool audio_thread_running;
+static bool audio_dma_running;
+static u32 ai_dsp_sample_rate = PC_AUDIO_SAMPLE_RATE;
+static u32 ai_stream_sample_rate = 48000;
+static u32 ai_stream_trigger;
+static u32 ai_stream_state;
+static u32 ai_stream_samples;
+static u8 ai_stream_left;
+static u8 ai_stream_right;
+static u32 ai_dma_addr;
+static u32 ai_dma_length;
+
+static void pc_audio_producer_func(void* data) {
+    (void)data;
+    while (audio_thread_running) {
+        if (audio_dma_running && acgc_3ds_audio_buffered_samples() < 4480) {
+            pc_audio_process_frame();
+            /* Each game audio update produces 560 stereo frames at 32 kHz
+             * (17.5 ms). Keep emulators that retire ndsp buffers instantly
+             * from turning this worker into a busy loop. */
+            svcSleepThread(17000000LL);
+        } else {
+            svcSleepThread(1000000LL);
+        }
+    }
+}
+
+void pc_audio_start_producer_thread(void) {
+    if (audio_producer_thread) return;
+    audio_thread_running = true;
+    audio_producer_thread = threadCreate(pc_audio_producer_func, NULL, 32 * 1024,
+                                         0x30, -2, false);
+    if (!audio_producer_thread) audio_thread_running = false;
+}
+
+void AIInit(u8* stack) {
+    (void)stack;
+    acgc_3ds_audio_init();
+}
+
+void AIInitDMA(u32 addr, u32 size) {
+    ai_dma_addr = addr;
+    ai_dma_length = size;
+    acgc_3ds_audio_submit((const void*)(uintptr_t)addr, size,
+                          g_pc_settings.master_volume);
+    ai_stream_samples += size / (sizeof(s16) * 2);
+}
+
+void AIStartDMA(void) { audio_dma_running = true; }
+void AIStopDMA(void) { audio_dma_running = false; }
+BOOL AIGetDMAEnableFlag(void) { return audio_dma_running ? TRUE : FALSE; }
+u32 AIGetDMABytesLeft(void) { return (u32)acgc_3ds_audio_buffered_samples() * sizeof(s16); }
+u32 AIGetDMAStartAddr(void) { return ai_dma_addr; }
+u16 AIGetDMALength(void) { return (u16)ai_dma_length; }
+
+void* AIRegisterDMACallback(void* callback) {
+    void* old = (void*)ai_dma_callback;
+    ai_dma_callback = (AIDMACallback)callback;
+    return old;
+}
+
+void* AIRegisterStreamCallback(void* callback) {
+    void* old = (void*)ai_stream_callback;
+    ai_stream_callback = (AIStreamCallback)callback;
+    return old;
+}
+
+u32 AIGetStreamTrigger(void) { return ai_stream_trigger; }
+void AISetStreamTrigger(u32 trigger) { ai_stream_trigger = trigger; }
+u32 AIGetStreamSampleCount(void) { return ai_stream_samples; }
+void AIResetStreamSampleCount(void) { ai_stream_samples = 0; }
+void AISetStreamPlayState(u32 state) { ai_stream_state = state; }
+u32 AIGetStreamPlayState(void) { return ai_stream_state; }
+void AISetStreamSampleRate(u32 rate) { ai_stream_sample_rate = rate; }
+u32 AIGetStreamSampleRate(void) { return ai_stream_sample_rate; }
+void AISetStreamVolLeft(u8 vol) { ai_stream_left = vol; }
+void AISetStreamVolRight(u8 vol) { ai_stream_right = vol; }
+u8 AIGetStreamVolLeft(void) { return ai_stream_left; }
+u8 AIGetStreamVolRight(void) { return ai_stream_right; }
+void AISetDSPSampleRate(u32 rate) { ai_dsp_sample_rate = rate; }
+u32 AIGetDSPSampleRate(void) { return ai_dsp_sample_rate; }
+void AIReset(void) { ai_stream_samples = 0; }
+
+void DSPInit(void) {}
+BOOL DSPCheckMailToDSP(void) { return FALSE; }
+BOOL DSPCheckMailFromDSP(void) { return FALSE; }
+u32 DSPReadMailFromDSP(void) { return 0; }
+void DSPSendMailToDSP(u32 mail) { (void)mail; }
+void DSPAssertInt(void) {}
+void* DSPAddTask(void* task) { return task; }
+
+int pc_audio_get_buffer_fill(void) { return acgc_3ds_audio_buffered_samples(); }
+int pc_audio_is_active(void) { return acgc_3ds_audio_ready(); }
+void pc_audio_set_paused(int paused) { audio_dma_running = !paused; }
+
+void pc_audio_shutdown(void) {
+    audio_thread_running = false;
+    if (audio_producer_thread) {
+        threadJoin(audio_producer_thread, UINT64_MAX);
+        threadFree(audio_producer_thread);
+        audio_producer_thread = NULL;
+    }
+    acgc_3ds_audio_shutdown();
+}
+
+#else
+
 /* lock-free SPSC ring buffer (producer=audio thread, consumer=SDL callback) */
 #define RING_BUF_SAMPLES (32768) /* ~512ms at 32kHz stereo */
 #define RING_BUF_MASK    (RING_BUF_SAMPLES - 1)
@@ -211,3 +330,5 @@ void pc_audio_shutdown(void) {
         audio_device = 0;
     }
 }
+
+#endif

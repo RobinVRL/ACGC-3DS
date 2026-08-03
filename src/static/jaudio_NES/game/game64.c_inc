@@ -3663,7 +3663,7 @@ extern void Na_SubGameEnd() {
 extern void Na_SceneMode(u8 a) {
     u8 unused = 0;
     if (a != sou_scene_mode) {
-#ifdef TARGET_PC
+#if defined(TARGET_PC) && !defined(TARGET_3DS)
         printf("[SCENE_MODE] %d -> %d\n", sou_scene_mode, a);
 #endif
         sou_ongenpos_kill_countdown = 0;

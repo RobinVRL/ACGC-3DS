@@ -1,9 +1,46 @@
 /* pc_pad.c - GC controller input via SDL gamepad + keyboard */
 #include "pc_platform.h"
+#include <dolphin/pad.h>
+
+#ifdef TARGET_3DS
+#include "acgc_3ds_platform.h"
+
+BOOL PADInit(void) { return TRUE; }
+
+u32 PADRead(PADStatus* status) {
+    AcgcPadStatus pad;
+
+    memset(status, 0, sizeof(PADStatus) * 4);
+    acgc_3ds_input_get(&pad);
+    status[0].button = pad.button;
+    status[0].stickX = pad.stick_x;
+    status[0].stickY = pad.stick_y;
+    status[0].substickX = pad.cstick_x;
+    status[0].substickY = pad.cstick_y;
+    status[0].triggerLeft = pad.trigger_left;
+    status[0].triggerRight = pad.trigger_right;
+    status[0].err = pad.err;
+    return PAD_CHAN0_BIT;
+}
+
+void PADControlMotor(s32 chan, u32 command) { (void)chan; (void)command; }
+void PADControlAllMotors(const u32* commands) { (void)commands; }
+void PADCleanup(void) {}
+BOOL PADReset(u32 mask) { (void)mask; return TRUE; }
+BOOL PADRecalibrate(u32 mask) { (void)mask; return TRUE; }
+BOOL PADSync(void) { return TRUE; }
+void PADSetSpec(u32 spec) { (void)spec; }
+void PADSetAnalogMode(u32 mode) { (void)mode; }
+BOOL PADGetType(s32 chan, u32* type) {
+    (void)chan;
+    if (type) *type = 0x09000000;
+    return TRUE;
+}
+
+#else
 #include "pc_typing.h"
 #include "pc_keybindings.h"
 #include "pc_settings.h"
-#include <dolphin/pad.h>
 
 /* analog stick constants */
 #define STICK_MAGNITUDE     80
@@ -199,3 +236,4 @@ void PADSetSpec(u32 spec) { (void)spec; }
 void PADSetAnalogMode(u32 mode) { (void)mode; }
 /* PADClamp compiled from decomp: src/static/dolphin/pad/Padclamp.c */
 BOOL PADGetType(s32 chan, u32* type) { if (type) *type = 0x09000000; return TRUE; }
+#endif

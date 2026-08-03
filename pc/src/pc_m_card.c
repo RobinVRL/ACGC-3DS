@@ -25,6 +25,7 @@
 #include "sys_math.h"
 #include "zurumode.h"
 #include "pc_save_bswap.h"
+#include "pc_save_paths.h"
 #include "pc_settings.h"
 #include "m_cockroach.h"
 #include "m_all_grow_ovl.h"
@@ -44,17 +45,14 @@
 #include <dolphin/os.h>  /* OSReport */
 
 /* --- Path constants --- */
-#define PC_CARD_A_DIR     "save/card_a"
-#define PC_CARD_B_DIR     "save/card_b"
 #define PC_GCI_FILENAME   "DobutsunomoriP_MURA.gci"
 #define PC_GCI_PATH       PC_CARD_A_DIR "/" PC_GCI_FILENAME
 #define PC_GCI_TMP_PATH   PC_CARD_A_DIR "/" PC_GCI_FILENAME ".tmp"
-#define PC_SAVE_DIR       "save"
 #define PC_SAVE_MAX_BACKUPS 3
 
 /* Legacy paths for migration from flat save/ layout */
-#define PC_GCI_PATH_LEGACY     "save/DobutsunomoriP_MURA.gci"
-#define PC_GCI_TMP_PATH_LEGACY "save/DobutsunomoriP_MURA.gci.tmp"
+#define PC_GCI_PATH_LEGACY     PC_SAVE_DIR "/DobutsunomoriP_MURA.gci"
+#define PC_GCI_TMP_PATH_LEGACY PC_SAVE_DIR "/DobutsunomoriP_MURA.gci.tmp"
 
 #define GCI_HEADER_SIZE      sizeof(CARDDir)        /* 64 bytes */
 #define GCI_FILE_DATA_SIZE   mCD_LAND_SAVE_SIZE     /* 0x72000 */
@@ -1157,7 +1155,9 @@ void mCD_toNextLand(void) {
     int rtc_enabled;
 
     if (l_keepSave_set != TRUE) {
+#ifndef TARGET_3DS
         OSReport("[PC] toNextLand: l_keepSave not set, aborting\n");
+#endif
         return;
     }
 

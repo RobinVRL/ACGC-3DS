@@ -114,6 +114,15 @@ void JFWSystem::firstInit() {
     DVDInit();
     rootHeap = JKRExpHeap::createRoot(CSetUpParam::maxStdHeaps, false);
     systemHeap = JKRExpHeap::create(CSetUpParam::sysHeapSize, rootHeap, false);
+#ifdef TARGET_3DS
+    /* Do not continue bootstrap with a null heap. The root heap is a valid
+     * fallback and keeps allocation failures diagnosable instead of turning
+     * the final exception-console allocation into a null dereference. */
+    if (systemHeap == nullptr) {
+        OSReport("[3DS] JKR system heap creation failed; using root heap\n");
+        systemHeap = rootHeap;
+    }
+#endif
 }
 
 void JFWSystem::init() {

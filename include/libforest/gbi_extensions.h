@@ -253,7 +253,7 @@ uintptr_t pc_gbi_unpack_runtime_ptr(unsigned int packed);
  * macros. See gbi.h for detailed explanation.
  */
 
-#ifdef TARGET_PC
+#if defined(TARGET_PC) || defined(TARGET_3DS)
 typedef struct {
     unsigned int c1:5;
     unsigned int a1:4;
@@ -295,7 +295,7 @@ typedef struct {
 } Gsetcombine_new;
 #endif
 
-#ifdef TARGET_PC
+#if defined(TARGET_PC) || defined(TARGET_3DS)
 typedef struct {
     unsigned int Ad1:3;
     unsigned int Ac1:3;
@@ -337,7 +337,7 @@ typedef struct {
 } Gsetcombine_tev;
 #endif
 
-#ifdef TARGET_PC
+#if defined(TARGET_PC) || defined(TARGET_3DS)
 typedef struct {
     unsigned int lower0:16;
     unsigned int upper0:8;
@@ -355,7 +355,7 @@ typedef struct {
 } Gsetcombine_raw;
 #endif
 
-#ifdef TARGET_PC
+#if defined(TARGET_PC) || defined(TARGET_3DS)
 typedef struct {
     unsigned int yl:12;
     unsigned int xl:12;
@@ -389,7 +389,7 @@ typedef struct {
 } Gtexrect2;
 #endif
 
-#ifdef TARGET_PC
+#if defined(TARGET_PC) || defined(TARGET_3DS)
 typedef struct {
     unsigned int shift_t:4;
     unsigned int shift_s:4;
@@ -417,7 +417,7 @@ typedef struct {
 } Gsettile_dolphin;
 #endif
 
-#ifdef TARGET_PC
+#if defined(TARGET_PC) || defined(TARGET_3DS)
 typedef struct {
     unsigned int slen:10;
     unsigned int sl:14;
@@ -441,7 +441,7 @@ typedef struct {
 } Gsettilesize_Dolphin;
 #endif
 
-#ifdef TARGET_PC
+#if defined(TARGET_PC) || defined(TARGET_3DS)
 typedef struct {
     unsigned int wd:10;
     unsigned int ht:8;
@@ -468,7 +468,7 @@ typedef union {
     Gsetimg2 setimg2;
 } Gsetimg_new;
 
-#ifdef TARGET_PC
+#if defined(TARGET_PC) || defined(TARGET_3DS)
 typedef struct {
     unsigned int count:14;
     unsigned int pad1:2;
@@ -490,7 +490,7 @@ typedef struct {
 } Gloadtlut_dolphin;
 #endif
 
-#ifdef TARGET_PC
+#if defined(TARGET_PC) || defined(TARGET_3DS)
 typedef struct {
     unsigned int on:8;
     unsigned int tile:3;
@@ -514,7 +514,7 @@ typedef struct {
 } Gtexture_internal;
 #endif
 
-#ifdef TARGET_PC
+#if defined(TARGET_PC) || defined(TARGET_3DS)
 typedef struct {
     unsigned int offset:16;
     unsigned int index:8;
@@ -530,7 +530,7 @@ typedef struct {
 } Gmoveword;
 #endif
 
-#ifdef TARGET_PC
+#if defined(TARGET_PC) || defined(TARGET_3DS)
 typedef struct {
     unsigned int index:8;
     unsigned int offset:8;
@@ -548,7 +548,7 @@ typedef struct {
 } Gmovemem;
 #endif
 
-#ifdef TARGET_PC
+#if defined(TARGET_PC) || defined(TARGET_3DS)
 typedef struct Gsettexedgealpha {
     unsigned int unused0:24;
     unsigned int cmd:8;
@@ -564,7 +564,7 @@ typedef struct Gsettexedgealpha {
 } Gsettexedgealpha;
 #endif
 
-#ifdef TARGET_PC
+#if defined(TARGET_PC) || defined(TARGET_3DS)
 typedef struct {
     unsigned int		y0frac:2;
     unsigned int		y0:10;
@@ -592,7 +592,7 @@ typedef struct {
 } Gscissor;
 #endif
 
-#ifdef TARGET_PC
+#if defined(TARGET_PC) || defined(TARGET_3DS)
 typedef struct {
     unsigned int		y0frac:2;
     unsigned int		y0:10;
@@ -620,7 +620,7 @@ typedef struct {
 } Gfillrect2;
 #endif
 
-#ifdef TARGET_PC
+#if defined(TARGET_PC) || defined(TARGET_3DS)
 typedef struct Gnoop {
     unsigned int param0: 16;
     unsigned int tag: 8;
@@ -636,7 +636,7 @@ typedef struct Gnoop {
 } Gnoop;
 #endif
 
-#ifdef TARGET_PC
+#if defined(TARGET_PC) || defined(TARGET_3DS)
 typedef struct Gmtx {
     unsigned int type: 8;
     unsigned int pad: 8;
@@ -654,7 +654,7 @@ typedef struct Gmtx {
 } Gmtx;
 #endif
 
-#ifdef TARGET_PC
+#if defined(TARGET_PC) || defined(TARGET_3DS)
 typedef struct Gvtx {
     unsigned int vn:8;
     unsigned int pad1: 4;
@@ -674,7 +674,7 @@ typedef struct Gvtx {
 } Gvtx;
 #endif
 
-#ifdef TARGET_PC
+#if defined(TARGET_PC) || defined(TARGET_3DS)
 typedef struct Gline3D_new {
     unsigned int wd: 8;
     unsigned int v1: 8;
@@ -692,7 +692,7 @@ typedef struct Gline3D_new {
 } Gline3D_new;
 #endif
 
-#ifdef TARGET_PC
+#if defined(TARGET_PC) || defined(TARGET_3DS)
 typedef struct Gtri1 {
     unsigned int v2: 8;
     unsigned int v1: 8;
@@ -710,7 +710,7 @@ typedef struct Gtri1 {
 } Gtri1;
 #endif
 
-#ifdef TARGET_PC
+#if defined(TARGET_PC) || defined(TARGET_3DS)
 typedef struct Gtri2 {
     unsigned int t0v2: 8;
     unsigned int t0v1: 8;
@@ -734,7 +734,7 @@ typedef struct Gtri2 {
 } Gtri2;
 #endif
 
-#ifdef TARGET_PC
+#if defined(TARGET_PC) || defined(TARGET_3DS)
 typedef struct Gtrin_independ {
     unsigned int f1v2_1: 2;
     unsigned int f2v0: 5;
@@ -770,7 +770,7 @@ typedef struct Gtrin_independ {
 } Gtrin_independ;
 #endif
 
-#ifdef TARGET_PC
+#if defined(TARGET_PC) || defined(TARGET_3DS)
 typedef struct Gtrin {
     unsigned int f1v2_1: 2;
     unsigned int f2v0: 5;
@@ -808,7 +808,7 @@ typedef struct Gtrin {
 } Gtrin;
 #endif
 
-#ifdef TARGET_PC
+#if defined(TARGET_PC) || defined(TARGET_3DS)
 typedef struct Gtrin_7b {
     unsigned int f1v1_1: 4;
     unsigned int f1v2: 7;
@@ -838,7 +838,7 @@ typedef struct Gtrin_7b {
 } Gtrin_7b;
 #endif
 
-#ifdef TARGET_PC
+#if defined(TARGET_PC) || defined(TARGET_3DS)
 typedef struct Gquad_independ {
     unsigned int f1v1_1: 2;
     unsigned int f1v2: 5;
@@ -874,7 +874,7 @@ typedef struct Gquad_independ {
 } Gquad_independ;
 #endif
 
-#ifdef TARGET_PC
+#if defined(TARGET_PC) || defined(TARGET_3DS)
 typedef struct Gquad {
     unsigned int f1v1_1: 2;
     unsigned int f1v2: 5;
@@ -912,7 +912,7 @@ typedef struct Gquad {
 } Gquad;
 #endif
 
-#ifdef TARGET_PC
+#if defined(TARGET_PC) || defined(TARGET_3DS)
 typedef struct Gquad_7b {
     unsigned int pad: 4;
     unsigned int f1v0_0: 3;
@@ -944,7 +944,7 @@ typedef struct Gquad_7b {
 } Gquad_7b;
 #endif
 
-#ifdef TARGET_PC
+#if defined(TARGET_PC) || defined(TARGET_3DS)
 typedef struct Gquad0 {
     unsigned int v2: 8;
     unsigned int v1: 8;
@@ -964,7 +964,7 @@ typedef struct Gquad0 {
 } Gquad0;
 #endif
 
-#ifdef TARGET_PC
+#if defined(TARGET_PC) || defined(TARGET_3DS)
 typedef struct Gculldl {
     unsigned int vstart: 16;
     unsigned int pad0: 8;
@@ -982,7 +982,7 @@ typedef struct Gculldl {
 } Gculldl;
 #endif
 
-#ifdef TARGET_PC
+#if defined(TARGET_PC) || defined(TARGET_3DS)
 typedef struct Gspecial1 {
     unsigned int param0: 16;
     int mode: 8;
@@ -998,7 +998,7 @@ typedef struct Gspecial1 {
 } Gspecial1;
 #endif
 
-#ifdef TARGET_PC
+#if defined(TARGET_PC) || defined(TARGET_3DS)
 typedef struct {
 		u32		len:8;
 		u32		sft:8;

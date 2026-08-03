@@ -18,7 +18,7 @@ extern void zelda_free(void* ptr) {
   __osFree(&zelda_arena, ptr);
 }
 
-extern void zelda_GetFreeArena(size_t* max, size_t* free, size_t* alloc) {
+extern void zelda_GetFreeArena(u32* max, u32* free, u32* alloc) {
   __osGetFreeArena(&zelda_arena,max,free,alloc);
 }
 

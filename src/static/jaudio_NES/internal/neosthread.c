@@ -43,7 +43,8 @@ extern u32 Neos_Update(s16* dst) {
         Jac_bzero(dst, DAC_SIZE * 2);
     }
 
-    /* Diagnostic: check NEOS output amplitude every 60 frames */
+    /* Diagnostic: check NEOS output amplitude every 60 frames. */
+#ifndef TARGET_3DS
     {
         static u32 neos_diag_ctr = 0;
         if ((neos_diag_ctr++ % 60) == 0) {
@@ -56,6 +57,7 @@ extern u32 Neos_Update(s16* dst) {
             printf("[NEOS_OUT] frame=%u tasks=%u peak=%d\n", neos_diag_ctr, pc_tasks[cur], peak);
         }
     }
+#endif
 
     NeosSync();
     pc_neos_cur = prev;

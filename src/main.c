@@ -18,6 +18,10 @@
 #include "libforest/osreport.h"
 #include "m_land.h"
 
+#ifdef TARGET_PC
+#include <stdlib.h>
+#endif
+
 // TODO: actually add all the stacks and headers
 
 OSThread graphThread;

@@ -91,9 +91,9 @@ static void aAL_actor_ct(ACTOR* actor, GAME* game) {
   Clip_c* clip = Common_GetPointer(clip);
   aAL_SkeletonInfo_c* skeleton_info;
 
-#ifdef TARGET_PC
+#if defined(TARGET_PC) && !defined(TARGET_3DS)
   { extern int g_pc_verbose; if (g_pc_verbose) printf("[LOGO] aAL_actor_ct: Animal Logo actor created\n"); }
-#else
+#elif !defined(TARGET_3DS)
   printf("[LOGO] aAL_actor_ct: Animal Logo actor created\n");
 #endif
 
@@ -452,9 +452,9 @@ static void aAL_setupAction(ANIMAL_LOGO_ACTOR* actor, GAME* game, int action) {
     (ANIMAL_LOGO_ACTION_PROC)&none_proc1
   };
 
-#ifdef TARGET_PC
+#if defined(TARGET_PC) && !defined(TARGET_3DS)
   { extern int g_pc_verbose; if (g_pc_verbose) printf("[LOGO] aAL_setupAction: %d -> %d\n", actor->action, action); }
-#else
+#elif !defined(TARGET_3DS)
   printf("[LOGO] aAL_setupAction: %d -> %d\n", actor->action, action);
 #endif
   (*init_proc[action])(actor, game);
@@ -841,12 +841,12 @@ static void aAL_actor_draw(ACTOR* actor, GAME* game) {
     g_pc_title_main_menu_visible = 0; }
 #endif
 
-#ifdef TARGET_PC
+#if defined(TARGET_PC) && !defined(TARGET_3DS)
   { extern int g_pc_verbose; if (g_pc_verbose && (aAL_draw_log_counter % 60) == 0) {
     printf("[LOGO] draw: action=%d pad_connected=%d back_opacity=%d copyright_opacity=%d press_start_opacity=%.0f\n",
            logo_actor->action, pad_connected, (int)logo_actor->back_opacity, (int)logo_actor->copyright_opacity, logo_actor->press_start_opacity);
   }}
-#else
+#elif !defined(TARGET_3DS)
   if ((aAL_draw_log_counter % 60) == 0) {
     printf("[LOGO] draw: action=%d pad_connected=%d back_opacity=%d copyright_opacity=%d press_start_opacity=%.0f\n",
            logo_actor->action, pad_connected, (int)logo_actor->back_opacity, (int)logo_actor->copyright_opacity, logo_actor->press_start_opacity);

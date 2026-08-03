@@ -1528,7 +1528,7 @@ typedef union {
  *  macros. On big-endian (GC), GCC allocates bitfields MSB-first; on
  *  little-endian, LSB-first. Reversing the declaration order compensates.
  */
-#ifdef TARGET_PC
+#if defined(TARGET_PC) || defined(TARGET_3DS)
 typedef struct {
 	unsigned int	len:16;
 	unsigned int	par:8;
@@ -1547,7 +1547,7 @@ typedef struct {
 /*
  * Graphics Immediate Mode Packet types
  */
-#ifdef TARGET_PC
+#if defined(TARGET_PC) || defined(TARGET_3DS)
 typedef struct {
 		int		pad:24;
 		int		cmd:8;
@@ -1561,7 +1561,7 @@ typedef struct {
 } Gtri;
 #endif
 
-#ifdef TARGET_PC
+#if defined(TARGET_PC) || defined(TARGET_3DS)
 typedef struct {
 		int		pad1:24;
 		int		cmd:8;
@@ -1577,7 +1577,7 @@ typedef struct {
 } Gpopmtx;
 #endif
 
-#ifdef TARGET_PC
+#if defined(TARGET_PC) || defined(TARGET_3DS)
 typedef struct {
 		int		number:8;
 		int		mw_index:8;
@@ -1597,7 +1597,7 @@ typedef struct {
 } Gsegment;
 #endif
 
-#ifdef TARGET_PC
+#if defined(TARGET_PC) || defined(TARGET_3DS)
 typedef struct {
 		int		len:8;
 		int		sft:8;
@@ -1615,7 +1615,7 @@ typedef struct {
 } GsetothermodeL;
 #endif
 
-#ifdef TARGET_PC
+#if defined(TARGET_PC) || defined(TARGET_3DS)
 typedef struct {
 		int		len:8;
 		int		sft:8;
@@ -1633,7 +1633,7 @@ typedef struct {
 } GsetothermodeH;
 #endif
 
-#ifdef TARGET_PC
+#if defined(TARGET_PC) || defined(TARGET_3DS)
 typedef struct {
 		unsigned char	on;
 		unsigned char	tile;
@@ -1653,7 +1653,7 @@ typedef struct {
 } Gtexture;
 #endif
 
-#ifdef TARGET_PC
+#if defined(TARGET_PC) || defined(TARGET_3DS)
 typedef struct {
 		int		pad:24;
 		int		cmd:8;
@@ -1667,7 +1667,7 @@ typedef struct {
 } Gline3D;
 #endif
 
-#ifdef TARGET_PC
+#if defined(TARGET_PC) || defined(TARGET_3DS)
 typedef struct {
 		int		pad1:24;
 		int		cmd:8;
@@ -1687,7 +1687,7 @@ typedef struct {
 /*
  * RDP Packet types
  */
-#ifdef TARGET_PC
+#if defined(TARGET_PC) || defined(TARGET_3DS)
 typedef struct {
                 unsigned int    wd:12;
                 unsigned int    pad:7;
@@ -1707,7 +1707,7 @@ typedef struct {
 } Gsetimg;
 #endif
 
-#ifdef TARGET_PC
+#if defined(TARGET_PC) || defined(TARGET_3DS)
 typedef struct {
 		unsigned int	muxs0:24;
 		int		cmd:8;
@@ -1721,7 +1721,7 @@ typedef struct {
 } Gsetcombine;
 #endif
 
-#ifdef TARGET_PC
+#if defined(TARGET_PC) || defined(TARGET_3DS)
 typedef struct {
 		unsigned int	prim_level:8;
 		unsigned int	prim_min_level:8;
@@ -1739,7 +1739,7 @@ typedef struct {
 } Gsetcolor;
 #endif
 
-#ifdef TARGET_PC
+#if defined(TARGET_PC) || defined(TARGET_3DS)
 typedef struct {
 		int		y0frac:2;
 		int		y0:10;
@@ -1767,7 +1767,7 @@ typedef struct {
 } Gfillrect;
 #endif
 
-#ifdef TARGET_PC
+#if defined(TARGET_PC) || defined(TARGET_3DS)
 typedef struct {
 		unsigned int	tmem:9;
 		unsigned int	line:9;
@@ -1809,7 +1809,7 @@ typedef struct {
 } Gsettile;
 #endif
 
-#ifdef TARGET_PC
+#if defined(TARGET_PC) || defined(TARGET_3DS)
 typedef struct {
 		unsigned int	tl:12;
 		unsigned int	sl:12;
@@ -1837,7 +1837,7 @@ typedef Gloadtile Gsettilesize;
 
 typedef Gloadtile Gloadtlut;
 
-#ifdef TARGET_PC
+#if defined(TARGET_PC) || defined(TARGET_3DS)
 typedef struct {
 		unsigned int	yl:12;
 		unsigned int	xl:12;

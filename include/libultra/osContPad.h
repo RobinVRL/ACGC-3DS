@@ -66,8 +66,11 @@ typedef struct {
     /* 0x03 */ s8 stick_y;
     /* 0x04 */ u8 errno;
 } OSContPad;
-/* Restore errno macro */
+/* MinGW has usually included errno before this header. Newlib has not, and
+ * introducing its errno macro here would rewrite later `.errno` field uses. */
+#ifndef TARGET_3DS
 #include <errno.h>
+#endif
 #else
 
 typedef struct {

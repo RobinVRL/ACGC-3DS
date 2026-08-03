@@ -9,6 +9,10 @@
 #include "m_rcp.h"
 #include "sys_matrix.h"
 
+#ifdef TARGET_3DS
+#include <stdio.h>
+#endif
+
 static void Bg_Draw_Actor_ct(ACTOR* actorx, GAME* game);
 static void Bg_Draw_Actor_dt(ACTOR* actorx, GAME* game);
 static void Bg_Draw_Actor_move(ACTOR* actorx, GAME* game);
@@ -404,6 +408,27 @@ static void aFD_DrawBg(Gfx* gfx, int exists, GAME* game) {
         gSPDisplayList(NEXT_BG_OPA_DISP, aFD_cull_set_model);
 
         CLOSE_DISP(game->graph);
+#ifdef TARGET_3DS
+        {
+            static int bg_list_diag_written;
+            if (!bg_list_diag_written) {
+                GRAPH* graph = game->graph;
+                Gfx* start = graph->Gfx_list10;
+                Gfx* head = graph->bg_opaque_thaga.thaGfx.head_p;
+                FILE* fp = fopen("sdmc:/3ds/acgc/bg_list_diag.txt", "w");
+                if (fp != NULL) {
+                    fprintf(fp, "start=%p head=%p count=%u\n", start, head,
+                            (unsigned)(head - start));
+                    for (int i = 0; i < 32 && start + i < head; ++i) {
+                        fprintf(fp, "%d %p %08x %08x\n", i, start + i,
+                                start[i].words.w0, start[i].words.w1);
+                    }
+                    fclose(fp);
+                }
+                bg_list_diag_written = TRUE;
+            }
+        }
+#endif
     }
 }
 
@@ -443,6 +468,29 @@ static void aFD_DrawBlock(aFD_block_c* block, ACTOR* actorx, GAME* game) {
         opa_gfx = mFI_GetBGDisplayListRom(block->bx, block->bz);
         xlu_gfx = mFI_GetBGDisplayListRom_XLU(block->bx, block->bz);
         anime_data = mFI_GetBGTexAnimInfo(&anime_frame_count, block->bx, block->bz);
+#ifdef TARGET_3DS
+        {
+            static int field_diag_written;
+            if (!field_diag_written) {
+                int num = mFI_GetBlockNum(block->bx, block->bz);
+                mFM_bg_info_c* bg = &g_fdinfo->block_info[num].bg_info;
+                FILE* fp = fopen("sdmc:/3ds/acgc/field_diag.txt", "w");
+                if (fp != NULL) {
+                    fprintf(fp, "field=%u block=%d,%d bg=%u opa=%p xlu=%p rom=%08x size=%08x\n",
+                            mFI_GetFieldId(), block->bx, block->bz,
+                            bg->bg_id.combination_type, opa_gfx, xlu_gfx,
+                            bg->rom_start_addr, bg->rom_size);
+                    if (opa_gfx != NULL) {
+                        fprintf(fp, "opa0=%08x %08x opa1=%08x %08x\n",
+                                opa_gfx[0].words.w0, opa_gfx[0].words.w1,
+                                opa_gfx[1].words.w0, opa_gfx[1].words.w1);
+                    }
+                    fclose(fp);
+                }
+                field_diag_written = TRUE;
+            }
+        }
+#endif
 
         Matrix_translate(block->wpos.x, block->wpos.y, block->wpos.z, MTX_LOAD);
         Matrix_scale(0.0625f, 0.0625f, 0.0625f, MTX_MULT);

@@ -51,7 +51,11 @@ void pc_profiler_add_dirty_mask_slow(unsigned int dirty);
 
 /* Hot-path wrappers: with profiling off these cost one predicted branch, no call. */
 static inline Uint64 pc_profiler_begin_timer(void) {
+#ifdef TARGET_3DS
+    return 0;
+#else
     return g_pc_profile_enabled ? SDL_GetPerformanceCounter() : 0;
+#endif
 }
 static inline void pc_profiler_add_time(PCProfilerTimer timer, Uint64 start) {
     if (g_pc_profile_enabled) pc_profiler_add_time_slow(timer, start);

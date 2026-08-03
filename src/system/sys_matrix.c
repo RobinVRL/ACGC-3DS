@@ -5,6 +5,7 @@
 #include "libc64/math64.h"
 #include "MSL_C/w_math.h"
 #include "libforest/gbi_extensions.h"
+#include "libultra/gu.h"
 
 // clang-format off
 Mtx Mtx_clear = gdSPDefMtx(

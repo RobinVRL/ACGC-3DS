@@ -5,9 +5,9 @@
 /* On PC, we don't have MSL_C - use standard math */
 #include <math.h>
 #include <string.h>
-#include <malloc.h>  /* for alloca() */
-/* Metrowerks __alloca is a compiler built-in; map to standard alloca on PC */
-#define __alloca alloca
+#include <malloc.h>
+/* Metrowerks __alloca is a compiler built-in; GCC provides the same primitive. */
+#define __alloca __builtin_alloca
 /* Metrowerks __declspec(section "...") is not supported by GCC.
  * GCC defines __declspec as a builtin keyword, so we must #undef it first. */
 #undef __declspec

@@ -19,7 +19,7 @@ extern Famicom_MallocInfo my_malloc_func;
 extern void famicom_emu_main(GAME* game);
 extern void famicom_emu_init(GAME* game);
 extern void famicom_emu_cleanup(GAME* game);
-extern void* famicom_gba_getImage(u32 rom_id, size_t* size);
+extern void* famicom_gba_getImage(u32 rom_id, u32* size);
 extern void famicom_gba_removeImage(void*);
 
 #ifdef __cplusplus

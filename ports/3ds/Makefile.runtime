@@ -1,0 +1,61 @@
+ROOT := ../..
+BUILD := build/runtime
+
+CC := $(DEVKITARM)/bin/arm-none-eabi-gcc
+
+ARCH := -march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft
+RUNTIME_FLAGS := -O0 -g -w -fno-strict-aliasing -fwrapv $(ARCH) \
+	-DTARGET_PC -DTARGET_3DS -DVERSION=0 -DF3DEX_GBI_2 -DNDEBUG \
+	-D_LANGUAGE_C -Dnullptr=NULL -I$(ROOT)/include -I$(ROOT)/src \
+	-I$(ROOT) -I$(ROOT)/pc/include -I$(DEVKITPRO)/libctru/include
+
+SMOKE_OBJECTS := \
+	$(BUILD)/entry.o \
+	$(BUILD)/boot.o \
+	$(BUILD)/graph.o \
+	$(BUILD)/game.o \
+	$(BUILD)/first_game.o \
+	$(BUILD)/second_game.o \
+	$(BUILD)/initial_menu.o \
+	$(BUILD)/pc_assets.o \
+	$(BUILD)/pc_disc_bridge.o \
+	$(BUILD)/pc_compat.o
+
+.PHONY: runtime-smoke
+
+runtime-smoke: $(BUILD) $(SMOKE_OBJECTS)
+	@echo "3DS native runtime smoke compile: OK"
+
+$(BUILD):
+	@mkdir -p $@
+
+$(BUILD)/entry.o: $(ROOT)/src/main.c
+	$(CC) $(RUNTIME_FLAGS) -Dmain=ac_entry -c $< -o $@
+
+$(BUILD)/boot.o: $(ROOT)/src/static/boot.c
+	$(CC) $(RUNTIME_FLAGS) -Dmain=boot_main -c $< -o $@
+
+$(BUILD)/graph.o: $(ROOT)/src/graph.c
+	$(CC) $(RUNTIME_FLAGS) -c $< -o $@
+
+$(BUILD)/game.o: $(ROOT)/src/game.c
+	$(CC) $(RUNTIME_FLAGS) -c $< -o $@
+
+$(BUILD)/first_game.o: $(ROOT)/src/first_game.c
+	$(CC) $(RUNTIME_FLAGS) -c $< -o $@
+
+$(BUILD)/second_game.o: $(ROOT)/src/second_game.c
+	$(CC) $(RUNTIME_FLAGS) -c $< -o $@
+
+$(BUILD)/initial_menu.o: $(ROOT)/src/static/initial_menu.c
+	$(CC) $(RUNTIME_FLAGS) -c $< -o $@
+
+$(BUILD)/pc_assets.o: $(ROOT)/pc/src/pc_assets.c
+	$(CC) $(RUNTIME_FLAGS) -c $< -o $@
+
+$(BUILD)/pc_disc_bridge.o: source/acgc_3ds_pc_disc.c
+	$(CC) $(RUNTIME_FLAGS) -Iinclude -c $< -o $@
+
+$(BUILD)/pc_compat.o: source/acgc_3ds_pc_compat.c
+	$(CC) $(RUNTIME_FLAGS) -Iinclude -c $< -o $@
+

@@ -2,6 +2,7 @@
  * Channel 0 (Slot A) → save/card_a/
  * Channel 1 (Slot B) → save/card_b/ */
 #include "pc_platform.h"
+#include "pc_save_paths.h"
 #include <sys/stat.h>   /* mkdir (Linux), stat */
 #ifdef _WIN32
 #include <direct.h>  /* _mkdir */
@@ -78,7 +79,7 @@ static void card_slot_free(CARDFileInfo_PC* fi) {
 }
 
 /* Per-channel directory: chan 0 = card_a, chan 1 = card_b */
-static const char* card_dir[2] = { "save/card_a", "save/card_b" };
+static const char* card_dir[2] = { PC_CARD_A_DIR, PC_CARD_B_DIR };
 static int card_mounted[2] = {0, 0};
 
 static const char* get_card_dir(s32 chan) {
@@ -98,13 +99,13 @@ static int card_filename_safe(const char* name) {
 
 static void ensure_dirs(void) {
 #ifdef _WIN32
-    _mkdir("save");
-    _mkdir("save/card_a");
-    _mkdir("save/card_b");
+    _mkdir(PC_SAVE_DIR);
+    _mkdir(PC_CARD_A_DIR);
+    _mkdir(PC_CARD_B_DIR);
 #else
-    mkdir("save", 0755);
-    mkdir("save/card_a", 0755);
-    mkdir("save/card_b", 0755);
+    mkdir(PC_SAVE_DIR, 0755);
+    mkdir(PC_CARD_A_DIR, 0755);
+    mkdir(PC_CARD_B_DIR, 0755);
 #endif
 }
 

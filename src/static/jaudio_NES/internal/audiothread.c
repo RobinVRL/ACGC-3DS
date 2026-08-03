@@ -1,6 +1,7 @@
 #include "jaudio_NES/audiothread.h"
 
 #include "dolphin/os.h"
+#include "dolphin/ai.h"
 #include "dolphin/os/OSFastCast.h"
 #include "jaudio_NES/dspproc.h"
 #include "jaudio_NES/cpubuf.h"

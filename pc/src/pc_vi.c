@@ -2,6 +2,10 @@
 #include "pc_platform.h"
 #include "pc_profiler.h"
 
+#ifdef TARGET_3DS
+#include <3ds.h>
+#endif
+
 #define VI_TVMODE_NTSC_INT    0
 #define VI_TVMODE_NTSC_DS     1
 #define VI_TVMODE_PAL_INT     4
@@ -34,6 +38,19 @@ void VISetNextFrameBuffer(void* fb) { (void)fb; }
 void VIFlush(void) {}
 
 void VIWaitForRetrace(void) {
+#ifdef TARGET_3DS
+    if (!pc_platform_poll_events()) {
+        g_pc_running = 0;
+        return;
+    }
+    if (vi_pre_callback) vi_pre_callback(retrace_count);
+    pc_platform_swap_buffers();
+    gspWaitForVBlank();
+    if (vi_post_callback) vi_post_callback(retrace_count);
+    retrace_count++;
+    pc_frame_counter++;
+    return;
+#else
     if (!perf_freq) perf_freq = SDL_GetPerformanceFrequency();
 
     /* --- frame time diagnostic --- */
@@ -137,6 +154,7 @@ void VIWaitForRetrace(void) {
 
     retrace_count++;
     pc_frame_counter++;
+#endif
 }
 
 u32 VIGetRetraceCount(void) { return retrace_count; }

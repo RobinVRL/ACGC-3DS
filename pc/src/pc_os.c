@@ -1,7 +1,20 @@
 /* pc_os.c - Dolphin OS replacement: arena, timers, threads, message queues */
 #include "pc_platform.h"
 
+#include <stdarg.h>
 #include <time.h>
+
+#ifdef TARGET_3DS
+#include <3ds/svc.h>
+#define ACGC_3DS_SYSTEM_TICK_HZ 268111856ULL
+static u64 pc_counter(void) { return svcGetSystemTick(); }
+static u64 pc_counter_frequency(void) { return ACGC_3DS_SYSTEM_TICK_HZ; }
+static void pc_delay_ms(u32 ms) { svcSleepThread((s64)ms * 1000000LL); }
+#else
+static u64 pc_counter(void) { return SDL_GetPerformanceCounter(); }
+static u64 pc_counter_frequency(void) { return SDL_GetPerformanceFrequency(); }
+static void pc_delay_ms(u32 ms) { SDL_Delay(ms); }
+#endif
 
 /* --- Memory arena --- */
 static u8* arena_memory = NULL;
@@ -23,20 +36,23 @@ static s64 gc_epoch_offset_ticks = 0; /* Ticks from GC epoch to program start */
 /* GC epoch: Jan 1, 2000 (946684800 seconds after Unix epoch) */
 #define GC_UNIX_EPOCH_DIFF 946684800LL
 
-s64 osGetTime(void) {
-    u64 now = SDL_GetPerformanceCounter();
-    u64 freq = SDL_GetPerformanceFrequency();
+static s64 pc_os_get_time(void) {
+    u64 now = pc_counter();
+    u64 freq = pc_counter_frequency();
     s64 elapsed = (s64)((now - time_base_start) * (u64)GC_TIMER_CLOCK / freq);
     return gc_epoch_offset_ticks + elapsed;
 }
 
-s64 OSGetTime(void) { return osGetTime(); }
+#ifndef TARGET_3DS
+s64 osGetTime(void) { return pc_os_get_time(); }
+#endif
+s64 OSGetTime(void) { return pc_os_get_time(); }
 
 /* same as OSGetTime on PC (no time_adjust needed) */
 s64 __OSGetSystemTime(void) { return OSGetTime(); }
 
 u32 osGetCount(void) {
-    return (u32)osGetTime();
+    return (u32)pc_os_get_time();
 }
 
 u32 OSGetTick(void) { return osGetCount(); }
@@ -247,7 +263,7 @@ void OSInit(void) {
         arena_lo = arena_memory + 0x3100;
         arena_hi = arena_memory + PC_MAIN_MEMORY_SIZE;
     }
-    time_base_start = SDL_GetPerformanceCounter();
+    time_base_start = pc_counter();
     /* compute ticks from GC epoch (Jan 1, 2000) to now, with timezone */
     {
         time_t unix_now = time(NULL);
@@ -366,7 +382,7 @@ OSSramEx* __OSLockSramEx(void) {
 }
 void __OSUnlockSramEx(BOOL commit) { (void)commit; }
 
-void msleep(int ms) { SDL_Delay(ms); }
+void msleep(int ms) { pc_delay_ms((u32)ms); }
 
 typedef struct OSMutex { int lock; } OSMutex;
 void OSInitMutex(OSMutex* mutex) { mutex->lock = 0; }

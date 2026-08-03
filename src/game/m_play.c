@@ -671,6 +671,18 @@ static void copy_efb_to_texture(Gfx** graph, void* buf) {
     gGXCallDisplayList((*graph)++, gxbuf, dl);
 }
 
+#ifdef TARGET_3DS
+static void m_play_3ds_set_ui_screen(GRAPH* graph, int bottom_screen) {
+    u32 marker = bottom_screen ? PC_NOOP_3DS_SCREEN_BOTTOM : PC_NOOP_3DS_SCREEN_TOP;
+
+    OPEN_DISP(graph);
+    gDPNoOpTag(NEXT_POLY_OPA_DISP, marker);
+    gDPNoOpTag(NEXT_POLY_XLU_DISP, marker);
+    gDPNoOpTag(NEXT_FONT_DISP, marker);
+    CLOSE_DISP(graph);
+}
+#endif
+
 static int makeBumpTexture(GAME_PLAY* play, GRAPH* graph1, GRAPH* graph2) {
     Gfx* newdisp;
     Gfx* polydisp;
@@ -768,7 +780,13 @@ static int makeBumpTexture(GAME_PLAY* play, GRAPH* graph1, GRAPH* graph2) {
         Actor_info_draw_actor(play, &play->actor_info);
         PC_DIAG(3, "makeBumpTexture: Actor draw done, Camera2...\n");
         Camera2_draw(play);
+#ifdef TARGET_3DS
+        m_play_3ds_set_ui_screen(graph1, TRUE);
+#endif
         mMsg_Draw((GAME*)play);
+#ifdef TARGET_3DS
+        m_play_3ds_set_ui_screen(graph1, FALSE);
+#endif
     }
 
     if ((GETREG(HREG, 80) != 10) || (GETREG(HREG, 93) != 0)) {
@@ -836,9 +854,15 @@ static void Game_play_draw(GAME_PLAY* play) {
 
         if ((makeBumpTexture(play, graph, graph) == 1) && ((GETREG(HREG, 80) != 10) || (GETREG(HREG, 89) != 0))) {
             PC_DIAG(3, "Game_play_draw: bump done, drawing\n");
+#ifdef TARGET_3DS
+            m_play_3ds_set_ui_screen(graph, TRUE);
+#endif
             watch_my_step_draw(play);
             banti_draw(play);
             mSM_submenu_draw(&play->submenu, (GAME*)play);
+#ifdef TARGET_3DS
+            m_play_3ds_set_ui_screen(graph, FALSE);
+#endif
         }
     }
     if (zurumode_flag != 0) {

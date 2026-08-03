@@ -31,6 +31,19 @@
 #include "pc_platform.h"
 #include "pc_pause_menu.h"
 #include "pc_profiler.h"
+#if defined(TARGET_3DS)
+#include <stdio.h>
+#include <stdarg.h>
+static void graph_3ds_diag(const char* fmt, ...) {
+    FILE* fp = fopen("sdmc:/3ds/acgc/graph_diag.txt", "a");
+    va_list ap;
+    if (fp == NULL) return;
+    va_start(ap, fmt);
+    vfprintf(fp, fmt, ap);
+    va_end(ap);
+    fclose(fp);
+}
+#endif
 extern int g_pc_running;
 #endif
 
@@ -168,6 +181,9 @@ int graph_dt_frame_phase(GAME* game, int period_frames) {
 
 static void graph_task_set00(GRAPH* this) {
     ucode_info ucode[2];
+#if defined(TARGET_PC) && defined(TARGET_3DS)
+    static int task_dl_diag;
+#endif
 
     GRAPH_SET_DOING_POINT(this, WAIT_TASK);
     GRAPH_SET_DOING_POINT(this, WAIT_TASK_FINISHED);
@@ -189,6 +205,18 @@ static void graph_task_set00(GRAPH* this) {
             emu64_init();
             emu64_set_ucode_info(2, ucode);
             emu64_set_first_ucode(ucode[0].ucode_p);
+#if defined(TARGET_PC) && defined(TARGET_3DS)
+            if (task_dl_diag++ < 3) {
+                printf("[GRAPH_DL task] sys=%p list=%p head=%p w0=%08x w1=%08x\n",
+                       (void*)sys_dynamic.work, (void*)this->Gfx_list05,
+                       (void*)this->work_thaga.thaGfx.head_p,
+                       this->Gfx_list05[0].words.w0, this->Gfx_list05[0].words.w1);
+                graph_3ds_diag("task sys=%p list=%p head=%p w0=%08x w1=%08x\n",
+                               (void*)sys_dynamic.work, (void*)this->Gfx_list05,
+                               (void*)this->work_thaga.thaGfx.head_p,
+                               this->Gfx_list05[0].words.w0, this->Gfx_list05[0].words.w1);
+            }
+#endif
             PC_DIAG(3, "graph_task_set00: emu64_taskstart(Gfx_list05=%p)\n", (void*)this->Gfx_list05);
 #ifdef TARGET_PC
             {
@@ -202,10 +230,20 @@ static void graph_task_set00(GRAPH* this) {
 #ifdef TARGET_PC
             {
                 extern int pc_emu64_frame_cmds, pc_emu64_frame_tri_cmds, pc_emu64_frame_vtx_cmds;
+                extern int pc_emu64_frame_dl_cmds, pc_emu64_frame_cull_visible, pc_emu64_frame_cull_rejected;
                 extern int pc_gx_draw_call_count;
                 PC_DIAG(5, "emu64 stats: cmds=%d tri=%d vtx=%d gl_draws=%d\n",
                         pc_emu64_frame_cmds, pc_emu64_frame_tri_cmds, pc_emu64_frame_vtx_cmds,
                         pc_gx_draw_call_count);
+#ifdef TARGET_3DS
+                if (task_dl_diag <= 6) {
+                    graph_3ds_diag("stats cmds=%d tri=%d vtx=%d dl=%d cull=%d/%d draws=%d\n",
+                                   pc_emu64_frame_cmds, pc_emu64_frame_tri_cmds,
+                                   pc_emu64_frame_vtx_cmds, pc_emu64_frame_dl_cmds,
+                                   pc_emu64_frame_cull_visible, pc_emu64_frame_cull_rejected,
+                                   pc_gx_draw_call_count);
+                }
+#endif
             }
 #endif
             emu64_cleanup();
@@ -221,6 +259,9 @@ static void graph_task_set00(GRAPH* this) {
 
 static int graph_draw_finish(GRAPH* this) {
     int err;
+#if defined(TARGET_PC) && defined(TARGET_3DS)
+    static int finish_dl_diag;
+#endif
     OPEN_DISP(this);
 
     gSPBranchList(NOW_WORK_DISP++, this->Gfx_list10);
@@ -229,13 +270,39 @@ static int graph_draw_finish(GRAPH* this) {
     gSPBranchList(NOW_BG_XLU_DISP++, this->Gfx_list00);
     gSPBranchList(NOW_POLY_OPA_DISP++, this->Gfx_list01);
     gSPBranchList(NOW_POLY_XLU_DISP++, this->Gfx_list09);
+#ifdef TARGET_3DS
+    /* Draw the overlay before the font list. Text and glyph symbols must be
+     * the final visual layer so window/capture textures cannot cover them. */
+    gSPBranchList(NOW_LIGHT_DISP++, this->Gfx_list04);
+    /* Overlay contains fades, wipes and capture blits. Route it to the top
+     * screen before execution; font commands may subsequently select another
+     * screen explicitly when a bottom-screen UI is active. */
+    gDPNoOpTag(NOW_OVERLAY_DISP++, PC_NOOP_3DS_SCREEN_TOP);
+    gSPBranchList(NOW_OVERLAY_DISP++, this->Gfx_list07);
+    gDPPipeSync(NOW_FONT_DISP++);
+    gDPFullSync(NOW_FONT_DISP++);
+    gSPEndDisplayList(NOW_FONT_DISP++);
+#else
     gSPBranchList(NOW_LIGHT_DISP++, this->Gfx_list07);
     gSPBranchList(NOW_FONT_DISP++, this->Gfx_list04);
     gDPPipeSync(NOW_OVERLAY_DISP++);
     gDPFullSync(NOW_OVERLAY_DISP++);
     gSPEndDisplayList(NOW_OVERLAY_DISP++);
+#endif
 
     CLOSE_DISP(this);
+#if defined(TARGET_PC) && defined(TARGET_3DS)
+    if (finish_dl_diag++ < 3) {
+        printf("[GRAPH_DL finish] sys=%p list=%p head=%p w0=%08x w1=%08x\n",
+               (void*)sys_dynamic.work, (void*)this->Gfx_list05,
+               (void*)this->work_thaga.thaGfx.head_p,
+               this->Gfx_list05[0].words.w0, this->Gfx_list05[0].words.w1);
+        graph_3ds_diag("finish sys=%p list=%p head=%p w0=%08x w1=%08x\n",
+                       (void*)sys_dynamic.work, (void*)this->Gfx_list05,
+                       (void*)this->work_thaga.thaGfx.head_p,
+                       this->Gfx_list05[0].words.w0, this->Gfx_list05[0].words.w1);
+    }
+#endif
     err = FALSE;
 
     SYSDYNAMIC_OPEN();

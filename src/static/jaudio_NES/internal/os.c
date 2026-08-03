@@ -4,6 +4,35 @@
 #include "jaudio_NES/sample.h"
 
 #ifdef TARGET_PC
+#ifdef TARGET_3DS
+#include <3ds/svc.h>
+#include <3ds/synchronization.h>
+static LightLock z_mq_mutex;
+static int z_mq_mutex_ready;
+
+void pc_audio_mq_init(void) {
+    if (!z_mq_mutex_ready) {
+        LightLock_Init(&z_mq_mutex);
+        z_mq_mutex_ready = 1;
+    }
+}
+
+void pc_audio_mq_shutdown(void) {
+    z_mq_mutex_ready = 0;
+}
+
+static void pc_mq_lock(void) {
+    if (z_mq_mutex_ready) LightLock_Lock(&z_mq_mutex);
+}
+
+static void pc_mq_unlock(void) {
+    if (z_mq_mutex_ready) LightLock_Unlock(&z_mq_mutex);
+}
+
+static void pc_mq_wait(void) {
+    svcSleepThread(1000000LL);
+}
+#else
 #include <SDL.h>
 static SDL_mutex* z_mq_mutex = NULL;
 
@@ -17,6 +46,19 @@ void pc_audio_mq_shutdown(void) {
         z_mq_mutex = NULL;
     }
 }
+
+static void pc_mq_lock(void) {
+    if (z_mq_mutex) SDL_LockMutex(z_mq_mutex);
+}
+
+static void pc_mq_unlock(void) {
+    if (z_mq_mutex) SDL_UnlockMutex(z_mq_mutex);
+}
+
+static void pc_mq_wait(void) {
+    SDL_Delay(1);
+}
+#endif
 #endif
 
 extern void Z_osWritebackDCacheAll() {
@@ -45,12 +87,12 @@ extern void Z_osCreateMesgQueue(OSMesgQueue* mq, OSMesg* msg, s32 count) {
 
 extern s32 Z_osSendMesg(OSMesgQueue* mq, OSMesg msg, s32 flags) {
 #ifdef TARGET_PC
-    if (z_mq_mutex) SDL_LockMutex(z_mq_mutex);
+    pc_mq_lock();
 #endif
     int msgCount = mq->msgCount;
     if (mq->validCount == mq->msgCount) {
 #ifdef TARGET_PC
-        if (z_mq_mutex) SDL_UnlockMutex(z_mq_mutex);
+        pc_mq_unlock();
 #endif
         return -1;
     }
@@ -66,22 +108,22 @@ extern s32 Z_osSendMesg(OSMesgQueue* mq, OSMesg msg, s32 flags) {
     mq->validCount++;
 
 #ifdef TARGET_PC
-    if (z_mq_mutex) SDL_UnlockMutex(z_mq_mutex);
+    pc_mq_unlock();
 #endif
     return 0;
 }
 
 extern s32 Z_osRecvMesg(OSMesgQueue* mq, OSMesg* msg, s32 flags) {
 #ifdef TARGET_PC
-    if (z_mq_mutex) SDL_LockMutex(z_mq_mutex);
+    pc_mq_lock();
 #endif
     if (flags == OS_MESG_BLOCK) {
 #ifdef TARGET_PC
         /* On PC with threading, spin-wait with mutex release */
         while (!mq->validCount) {
-            if (z_mq_mutex) SDL_UnlockMutex(z_mq_mutex);
-            SDL_Delay(1);
-            if (z_mq_mutex) SDL_LockMutex(z_mq_mutex);
+            pc_mq_unlock();
+            pc_mq_wait();
+            pc_mq_lock();
         }
 #else
         while (!mq->validCount) {};
@@ -93,7 +135,7 @@ extern s32 Z_osRecvMesg(OSMesgQueue* mq, OSMesg* msg, s32 flags) {
             *msg = NULL;
         }
 #ifdef TARGET_PC
-        if (z_mq_mutex) SDL_UnlockMutex(z_mq_mutex);
+        pc_mq_unlock();
 #endif
         return -1;
     }
@@ -111,7 +153,7 @@ extern s32 Z_osRecvMesg(OSMesgQueue* mq, OSMesg* msg, s32 flags) {
     }
 
 #ifdef TARGET_PC
-    if (z_mq_mutex) SDL_UnlockMutex(z_mq_mutex);
+    pc_mq_unlock();
 #endif
     return 0;
 }

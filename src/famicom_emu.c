@@ -215,7 +215,7 @@ extern void famicom_emu_cleanup(GAME* game) {
 #endif
 }
 
-extern void* famicom_gba_getImage(u32 rom_id, size_t* size) {
+extern void* famicom_gba_getImage(u32 rom_id, u32* size) {
     static char* names[] = {
         "cluclu", "usa_balloon",  "donkey", "usa_jr_math", "pinball",  "tennis", "usa_golf",
         NULL,     "usa_baseball", NULL,     "usa_donkey3", "donkeyjr", "soccer", "exbike",

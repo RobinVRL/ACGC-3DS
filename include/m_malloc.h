@@ -14,7 +14,7 @@ extern void* zelda_malloc_align(size_t,u32);
 extern void* zelda_malloc(size_t);
 extern void* zelda_malloc_r(size_t);
 extern void zelda_free(void*);
-extern void zelda_GetFreeArena(size_t* max, size_t* free, size_t* alloc);
+extern void zelda_GetFreeArena(u32* max, u32* free, u32* alloc);
 extern size_t zelda_GetTotalFreeSize(void);
 extern size_t zelda_GetMemBlockSize(void*);
 extern void zelda_InitArena(void*, size_t);
