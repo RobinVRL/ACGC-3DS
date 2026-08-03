@@ -26,10 +26,10 @@ make cia
 This creates `acgc_3ds_extended.cia` with the 80 MiB (Dev2) Old 3DS system
 mode in its exheader. Install it with FBI. Launching or exiting this build may
 reboot an Old 3DS as the system switches memory layouts; this is expected.
-The native runtime places the GameCube's full 24 MiB MEM1 arena inside a 36 MiB
-linear allocation budget, leaving 12 MiB there for renderer/audio resources.
-Its 16 MiB ARAM emulation and decoded assets use the separate ordinary heap;
-use the extended-memory CIA on Old 3DS hardware.
+The native runtime uses an 8 MiB MEM1 arena because most DOL/REL data is already
+compiled into the process image. It reserves 12 MiB of linear memory for the
+renderer and audio, leaving the ordinary heap for MEM1, the 16 MiB ARAM
+emulation, and decoded assets. Use the extended-memory CIA on Old 3DS hardware.
 
 Compile the native game-entry and frame-loop boundary with:
 

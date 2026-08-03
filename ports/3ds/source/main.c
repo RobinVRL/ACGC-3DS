@@ -16,11 +16,10 @@ extern int g_pc_running;
 int pc_disc_init(void);
 void pc_disc_shutdown(void);
 
-/* Keep MEM1 out of the fragmented ordinary heap. This reserves the full
- * 24 MiB GameCube arena plus 12 MiB for Citro3D textures, vertices, command
- * buffers, and ndsp audio. The remaining application memory becomes the
- * ordinary heap used by ARAM emulation and decoded ROM assets. */
-u32 __ctru_linear_heap_size = 36 * 1024 * 1024;
+/* Keep enough ordinary heap for the 8 MiB emulated MEM1 arena, 16 MiB ARAM,
+ * the native image, and decoded assets. Citro3D textures, vertices, command
+ * buffers, and ndsp audio fit in this dedicated linear reservation. */
+u32 __ctru_linear_heap_size = 12 * 1024 * 1024;
 
 static PrintConsole* g_launcher_console;
 

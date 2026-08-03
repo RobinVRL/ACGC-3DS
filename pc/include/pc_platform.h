@@ -33,10 +33,14 @@ typedef uint64_t Uint64;
 #define PC_SCREEN_HEIGHT  PC_GC_HEIGHT
 #define PC_WINDOW_TITLE   "Animal Crossing"
 
-/* Match the GameCube's complete MEM1 address space on every platform. The 3DS
- * port previously reduced this to 8 MiB, which left the game's Zelda/JSystem
- * heaps unnecessarily cramped even in the extended-memory CIA layout. */
+#ifdef TARGET_3DS
+/* Most DOL/REL data is compiled into the process image instead of living in
+ * emulated MEM1. A full 24 MiB arena, the 16 MiB ARAM buffer, and the native
+ * image cannot coexist in the memory available to a Homebrew Launcher 3DSX. */
+#define PC_MAIN_MEMORY_SIZE   (8 * 1024 * 1024)
+#else
 #define PC_MAIN_MEMORY_SIZE   (24 * 1024 * 1024)
+#endif
 #define PC_ARAM_SIZE          (16 * 1024 * 1024)
 #define PC_FIFO_SIZE          (256 * 1024)
 

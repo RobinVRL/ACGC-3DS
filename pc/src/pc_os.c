@@ -6,7 +6,6 @@
 
 #ifdef TARGET_3DS
 #include <3ds/svc.h>
-#include <3ds/allocator/linear.h>
 #define ACGC_3DS_SYSTEM_TICK_HZ 268111856ULL
 static u64 pc_counter(void) { return svcGetSystemTick(); }
 static u64 pc_counter_frequency(void) { return ACGC_3DS_SYSTEM_TICK_HZ; }
@@ -251,15 +250,7 @@ void LCDisable(void) {}
 /* --- Init --- */
 void OSInit(void) {
     if (!arena_memory) {
-#ifdef TARGET_3DS
-        /* A 24 MiB malloc consumed most of the ordinary heap and caused later
-         * asset/texture setup to fail silently. The 3DS linear heap is fully
-         * backed, contiguous memory and has a dedicated 12 MiB remainder for
-         * GPU/audio allocations after this reservation. */
-        arena_memory = (u8*)linearAlloc(PC_MAIN_MEMORY_SIZE);
-#else
         arena_memory = (u8*)malloc(PC_MAIN_MEMORY_SIZE);
-#endif
         if (!arena_memory) {
             fprintf(stderr, "Failed to allocate main memory arena\n");
             exit(1);
