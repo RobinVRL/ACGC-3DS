@@ -179,7 +179,16 @@ static Acgc3dsLightState s_lights[8];
 static GXBool s_depth_test;
 static GXCompare s_depth_func;
 static GXBool s_depth_write;
-static GXBool s_blend_enable;
+static GXBlendMode s_blend_mode;
+static GXBlendFactor s_blend_src;
+static GXBlendFactor s_blend_dst;
+static GXBool s_color_update;
+static GXBool s_alpha_update;
+static GXCompare s_alpha_comp0;
+static u8 s_alpha_ref0;
+static GXAlphaOp s_alpha_op;
+static GXCompare s_alpha_comp1;
+static u8 s_alpha_ref1;
 
 static void gx_refresh_binding(GXTexMapID map);
 
@@ -441,7 +450,90 @@ static void gx_state_defaults(void) {
     s_depth_test = GX_TRUE;
     s_depth_func = GX_LEQUAL;
     s_depth_write = GX_TRUE;
-    s_blend_enable = GX_FALSE;
+    s_blend_mode = GX_BM_NONE;
+    s_blend_src = GX_BL_ONE;
+    s_blend_dst = GX_BL_ZERO;
+    s_color_update = GX_TRUE;
+    s_alpha_update = GX_TRUE;
+    s_alpha_comp0 = GX_ALWAYS;
+    s_alpha_ref0 = 0;
+    s_alpha_op = GX_AOP_AND;
+    s_alpha_comp1 = GX_ALWAYS;
+    s_alpha_ref1 = 0;
+}
+
+/* PICA200 exposes one alpha comparison while GX combines two. Collapse the
+ * combinations used by the game (ALWAYS and paired threshold comparisons)
+ * to an equivalent single test. Unknown combinations conservatively leave
+ * alpha testing disabled instead of rejecting visible pixels. */
+static void gx_resolve_alpha_test(int* enabled, int* func, int* ref) {
+    GXCompare comp0 = s_alpha_comp0;
+    GXCompare comp1 = s_alpha_comp1;
+    u8 ref0 = s_alpha_ref0;
+    u8 ref1 = s_alpha_ref1;
+
+    *enabled = 1;
+    *func = GX_ALWAYS;
+    *ref = 0;
+
+    if (s_alpha_op == GX_AOP_AND) {
+        if (comp0 == GX_NEVER || comp1 == GX_NEVER) {
+            *func = GX_NEVER;
+            return;
+        }
+        if (comp0 == GX_ALWAYS) {
+            comp0 = comp1;
+            ref0 = ref1;
+        } else if (comp1 != GX_ALWAYS) {
+            if (comp0 != comp1) {
+                *enabled = 0;
+                return;
+            }
+            if (comp0 == GX_GREATER || comp0 == GX_GEQUAL) {
+                if (ref1 > ref0) ref0 = ref1;
+            } else if (comp0 == GX_LESS || comp0 == GX_LEQUAL) {
+                if (ref1 < ref0) ref0 = ref1;
+            } else if (comp0 == GX_EQUAL && ref0 != ref1) {
+                *func = GX_NEVER;
+                return;
+            } else if (comp0 == GX_NEQUAL && ref0 != ref1) {
+                *enabled = 0;
+                return;
+            }
+        }
+    } else if (s_alpha_op == GX_AOP_OR) {
+        if (comp0 == GX_ALWAYS || comp1 == GX_ALWAYS) {
+            *enabled = 0;
+            return;
+        }
+        if (comp0 == GX_NEVER) {
+            comp0 = comp1;
+            ref0 = ref1;
+        } else if (comp1 != GX_NEVER) {
+            if (comp0 != comp1) {
+                *enabled = 0;
+                return;
+            }
+            if (comp0 == GX_GREATER || comp0 == GX_GEQUAL) {
+                if (ref1 < ref0) ref0 = ref1;
+            } else if (comp0 == GX_LESS || comp0 == GX_LEQUAL) {
+                if (ref1 > ref0) ref0 = ref1;
+            } else if (comp0 == GX_EQUAL && ref0 != ref1) {
+                *enabled = 0;
+                return;
+            }
+        }
+    } else {
+        *enabled = 0;
+        return;
+    }
+
+    if (comp0 == GX_ALWAYS) {
+        *enabled = 0;
+        return;
+    }
+    *func = comp0;
+    *ref = ref0;
 }
 
 static void gx_select_texmap(GXTexMapID map) {
@@ -1342,18 +1434,20 @@ static void gx_draw(void) {
     if (out_count) {
         int draw_depth_test = s_depth_test;
         int draw_depth_write = s_depth_write;
+        int alpha_test;
+        int alpha_func;
+        int alpha_ref;
 
-        /* Blended surfaces must not populate the depth buffer. Fully or
-         * partially transparent texels otherwise prevent geometry submitted
-         * later from appearing through them. Font is the final UI layer and
-         * must neither test nor write scene depth. */
-        if (s_blend_enable) draw_depth_write = GX_FALSE;
+        /* Font is the final UI layer and must neither test nor write scene
+         * depth. Other draws retain the GX depth-write state: decal overlays
+         * rely on the game's explicit multipass ordering. */
         if (preset == ACGC_3DS_TEV_FONT_MASK) {
             draw_depth_test = GX_FALSE;
             draw_depth_write = GX_FALSE;
         }
 
         gx_build_modelview(modelview);
+        gx_resolve_alpha_test(&alpha_test, &alpha_func, &alpha_ref);
         C3D_Tex* texture0 = (preset == ACGC_3DS_TEV_SPOTLIGHT || preset == ACGC_3DS_TEV_MASKED) ?
                             s_tex_bindings[GX_TEXMAP0].tex :
                             (font_map != GX_TEXMAP_NULL ? s_tex_bindings[font_map].tex :
@@ -1373,9 +1467,11 @@ static void gx_draw(void) {
                                          s_render_screen ? ACGC_3DS_RENDER_UI
                                                          : ACGC_3DS_RENDER_WORLD,
                                          s_viewport,
-                                         s_blend_enable,
+                                         s_blend_mode, s_blend_src, s_blend_dst,
+                                         alpha_test, alpha_func, alpha_ref,
                                          draw_depth_test, s_depth_func,
-                                         draw_depth_write);
+                                         draw_depth_write,
+                                         s_color_update, s_alpha_update);
     }
     s_count = 0;
     s_expected_count = 0;
@@ -1898,14 +1994,30 @@ void GXSetTevOrder(GXTevStageID a,GXTexCoordID b,GXTexMapID c,GXChannelID d){
 IGNORE1(GXSetTevDirect,GXTevStageID)
 IGNORE3(GXSetIndTexCoordScale,GXIndTexStageID,GXIndTexScale,GXIndTexScale)
 
-void GXSetAlphaCompare(GXCompare a,u8 b,GXAlphaOp c,GXCompare d,u8 e){(void)a;(void)b;(void)c;(void)d;(void)e;}
-void GXSetBlendMode(GXBlendMode mode,GXBlendFactor src,GXBlendFactor dst,GXLogicOp op){
-    (void)src; (void)dst; (void)op;
+void GXSetAlphaCompare(GXCompare comp0, u8 ref0, GXAlphaOp op,
+                       GXCompare comp1, u8 ref1) {
     gx_draw();
-    s_blend_enable = mode == GX_BM_BLEND || mode == GX_BM_SUBTRACT;
+    s_alpha_comp0 = comp0;
+    s_alpha_ref0 = ref0;
+    s_alpha_op = op;
+    s_alpha_comp1 = comp1;
+    s_alpha_ref1 = ref1;
 }
-IGNORE1(GXSetColorUpdate,GXBool)
-IGNORE1(GXSetAlphaUpdate,GXBool)
+void GXSetBlendMode(GXBlendMode mode,GXBlendFactor src,GXBlendFactor dst,GXLogicOp op){
+    (void)op;
+    gx_draw();
+    s_blend_mode = mode;
+    s_blend_src = src;
+    s_blend_dst = dst;
+}
+void GXSetColorUpdate(GXBool enable) {
+    gx_draw();
+    s_color_update = enable;
+}
+void GXSetAlphaUpdate(GXBool enable) {
+    gx_draw();
+    s_alpha_update = enable;
+}
 void GXSetZMode(GXBool compare_enable, GXCompare func, GXBool update_enable) {
     gx_draw();
     s_depth_test = compare_enable;

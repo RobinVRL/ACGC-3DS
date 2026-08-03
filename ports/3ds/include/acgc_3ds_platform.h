@@ -86,10 +86,17 @@ int acgc_3ds_video_draw_gx_triangles(const Acgc3dsGpuVertex* vertices, size_t co
                                      Acgc3dsTevPreset tev_preset,
                                      Acgc3dsRenderLayer layer,
                                      const float viewport[6],
-                                     int blend_enable,
+                                     int blend_mode,
+                                     int blend_src,
+                                     int blend_dst,
+                                     int alpha_test,
+                                     int alpha_func,
+                                     int alpha_ref,
                                      int depth_test,
                                      int depth_func,
-                                     int depth_write);
+                                     int depth_write,
+                                     int color_update,
+                                     int alpha_update);
 int acgc_3ds_audio_init(void);
 int acgc_3ds_audio_ready(void);
 void acgc_3ds_audio_shutdown(void);

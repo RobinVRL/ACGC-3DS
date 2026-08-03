@@ -55,11 +55,19 @@ static Acgc3dsTevPreset g_tev_preset;
 static u32 g_tev_color1;
 static u32 g_tev_color2;
 static int g_blend_state_valid;
-static int g_blend_enable;
+static int g_blend_mode;
+static int g_blend_src;
+static int g_blend_dst;
+static int g_alpha_state_valid;
+static int g_alpha_test;
+static int g_alpha_func;
+static int g_alpha_ref;
 static int g_depth_state_valid;
 static int g_depth_test;
 static int g_depth_func;
 static int g_depth_write;
+static int g_color_update;
+static int g_alpha_update;
 
 /* Keep the off-screen target at its native logical size. Sub-native rendering
  * needs a different texture-origin/presentation transform; sampling the
@@ -83,6 +91,32 @@ static GPU_TESTFUNC acgc_3ds_video_depth_func(int gx_func) {
         GPU_LESS, GPU_NOTEQUAL, GPU_LEQUAL, GPU_ALWAYS
     };
     return (unsigned)gx_func < 8 ? funcs[gx_func] : GPU_ALWAYS;
+}
+
+static GPU_TESTFUNC acgc_3ds_video_alpha_func(int gx_func) {
+    static const GPU_TESTFUNC funcs[8] = {
+        GPU_NEVER, GPU_LESS, GPU_EQUAL, GPU_LEQUAL,
+        GPU_GREATER, GPU_NOTEQUAL, GPU_GEQUAL, GPU_ALWAYS
+    };
+    return (unsigned)gx_func < 8 ? funcs[gx_func] : GPU_ALWAYS;
+}
+
+static GPU_BLENDFACTOR acgc_3ds_video_blend_src(int gx_factor) {
+    static const GPU_BLENDFACTOR factors[8] = {
+        GPU_ZERO, GPU_ONE, GPU_DST_COLOR, GPU_ONE_MINUS_DST_COLOR,
+        GPU_SRC_ALPHA, GPU_ONE_MINUS_SRC_ALPHA,
+        GPU_DST_ALPHA, GPU_ONE_MINUS_DST_ALPHA
+    };
+    return (unsigned)gx_factor < 8 ? factors[gx_factor] : GPU_ONE;
+}
+
+static GPU_BLENDFACTOR acgc_3ds_video_blend_dst(int gx_factor) {
+    static const GPU_BLENDFACTOR factors[8] = {
+        GPU_ZERO, GPU_ONE, GPU_SRC_COLOR, GPU_ONE_MINUS_SRC_COLOR,
+        GPU_SRC_ALPHA, GPU_ONE_MINUS_SRC_ALPHA,
+        GPU_DST_ALPHA, GPU_ONE_MINUS_DST_ALPHA
+    };
+    return (unsigned)gx_factor < 8 ? factors[gx_factor] : GPU_ZERO;
 }
 
 static void acgc_3ds_video_delete_targets(void) {
@@ -309,6 +343,7 @@ void acgc_3ds_video_begin_frame(void) {
     g_bound_texture1 = NULL;
     g_tev_state_valid = 0;
     g_blend_state_valid = 0;
+    g_alpha_state_valid = 0;
     g_depth_state_valid = 0;
 }
 
@@ -334,8 +369,9 @@ int acgc_3ds_video_draw_triangles(const Acgc3dsGpuVertex* vertices, size_t count
                                              NULL, NULL, 0xffffffffu, 0xffffffffu,
                                              ACGC_3DS_TEV_PASSCLR,
                                              ACGC_3DS_RENDER_WORLD, NULL,
-                                             0,
-                                             0, 7, 0);
+                                             0, 1, 0,
+                                             0, 7, 0,
+                                             0, 7, 0, 1, 1);
 }
 
 int acgc_3ds_video_draw_gx_triangles(const Acgc3dsGpuVertex* vertices, size_t count,
@@ -348,10 +384,17 @@ int acgc_3ds_video_draw_gx_triangles(const Acgc3dsGpuVertex* vertices, size_t co
                                      Acgc3dsTevPreset tev_preset,
                                      Acgc3dsRenderLayer layer,
                                      const float viewport[6],
-                                     int blend_enable,
+                                     int blend_mode,
+                                     int blend_src,
+                                     int blend_dst,
+                                     int alpha_test,
+                                     int alpha_func,
+                                     int alpha_ref,
                                      int depth_test,
                                      int depth_func,
-                                     int depth_write) {
+                                     int depth_write,
+                                     int color_update,
+                                     int alpha_update) {
     Acgc3dsGpuVertex* dst;
     size_t present_reserve = g_bottom_enabled ? 12u : 6u;
 
@@ -360,26 +403,49 @@ int acgc_3ds_video_draw_gx_triangles(const Acgc3dsGpuVertex* vertices, size_t co
     if (g_frame_vertex_count + count > ACGC_3DS_MAX_FRAME_VERTICES - present_reserve) return 0;
 
     acgc_3ds_video_select_layer(layer, viewport);
-    if (!g_blend_state_valid || g_blend_enable != blend_enable) {
-        if (blend_enable) {
-            C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD,
-                           GPU_SRC_ALPHA, GPU_ONE_MINUS_SRC_ALPHA,
-                           GPU_ONE, GPU_ONE_MINUS_SRC_ALPHA);
-        } else {
-            C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD,
-                           GPU_ONE, GPU_ZERO, GPU_ONE, GPU_ZERO);
+    if (!g_blend_state_valid || g_blend_mode != blend_mode ||
+        g_blend_src != blend_src || g_blend_dst != blend_dst) {
+        GPU_BLENDEQUATION equation = blend_mode == 3 ?
+                                     GPU_BLEND_REVERSE_SUBTRACT : GPU_BLEND_ADD;
+        GPU_BLENDFACTOR src = blend_mode == 1 ?
+                              acgc_3ds_video_blend_src(blend_src) : GPU_ONE;
+        GPU_BLENDFACTOR dst = blend_mode == 1 ?
+                              acgc_3ds_video_blend_dst(blend_dst) : GPU_ZERO;
+        if (blend_mode == 3) {
+            src = GPU_ONE;
+            dst = GPU_ONE;
         }
-        g_blend_enable = blend_enable;
+        C3D_AlphaBlend(equation, equation, src, dst, src, dst);
+        g_blend_mode = blend_mode;
+        g_blend_src = blend_src;
+        g_blend_dst = blend_dst;
         g_blend_state_valid = 1;
     }
+    if (!g_alpha_state_valid || g_alpha_test != alpha_test ||
+        g_alpha_func != alpha_func || g_alpha_ref != alpha_ref) {
+        C3D_AlphaTest(alpha_test,
+                      alpha_test ? acgc_3ds_video_alpha_func(alpha_func) : GPU_ALWAYS,
+                      (u8)alpha_ref);
+        g_alpha_test = alpha_test;
+        g_alpha_func = alpha_func;
+        g_alpha_ref = alpha_ref;
+        g_alpha_state_valid = 1;
+    }
     if (!g_depth_state_valid || g_depth_test != depth_test ||
-        g_depth_func != depth_func || g_depth_write != depth_write) {
+        g_depth_func != depth_func || g_depth_write != depth_write ||
+        g_color_update != color_update || g_alpha_update != alpha_update) {
+        GPU_WRITEMASK write_mask = 0;
+        if (color_update) write_mask |= GPU_WRITE_RED | GPU_WRITE_GREEN | GPU_WRITE_BLUE;
+        if (alpha_update) write_mask |= GPU_WRITE_ALPHA;
+        if (depth_write) write_mask |= GPU_WRITE_DEPTH;
         C3D_DepthTest(depth_test || depth_write,
                       depth_test ? acgc_3ds_video_depth_func(depth_func) : GPU_ALWAYS,
-                      depth_write ? GPU_WRITE_ALL : GPU_WRITE_COLOR);
+                      write_mask);
         g_depth_test = depth_test;
         g_depth_func = depth_func;
         g_depth_write = depth_write;
+        g_color_update = color_update;
+        g_alpha_update = alpha_update;
         g_depth_state_valid = 1;
     }
     if (projection != NULL) {
@@ -582,6 +648,7 @@ static void acgc_3ds_video_present(C3D_RenderTarget* target, C3D_Tex* texture,
     C3D_TexEnvFunc(env, C3D_Both, GPU_REPLACE);
     C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD,
                    GPU_ONE, GPU_ZERO, GPU_ONE, GPU_ZERO);
+    C3D_AlphaTest(false, GPU_ALWAYS, 0);
 
     v = &g_vertex_buffer[g_frame_vertex_count];
 #define SET_PRESENT_VERTEX(dst, px, py, tu, tv) do { \
@@ -610,6 +677,7 @@ static void acgc_3ds_video_present(C3D_RenderTarget* target, C3D_Tex* texture,
     g_bound_texture1 = NULL;
     g_tev_state_valid = 0;
     g_blend_state_valid = 0;
+    g_alpha_state_valid = 0;
     g_depth_state_valid = 0;
 }
 

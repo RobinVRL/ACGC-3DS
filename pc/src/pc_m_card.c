@@ -234,6 +234,22 @@ static void pc_ensure_save_dirs(void) {
 #endif
 }
 
+static int pc_save_read_exact_at(FILE* fp, long offset, void* dst, size_t size) {
+    return fp != NULL && dst != NULL &&
+           fseek(fp, offset, SEEK_SET) == 0 &&
+           fread(dst, 1, size, fp) == size;
+}
+
+static int pc_save_flush_file(FILE* fp) {
+    if (fp == NULL || fflush(fp) != 0) return FALSE;
+#ifdef TARGET_3DS
+    /* stdio buffering is enough in Azahar, but physical SD media needs the
+     * file handle flushed before the temp-file rename is made visible. */
+    if (fsync(fileno(fp)) != 0) return FALSE;
+#endif
+    return TRUE;
+}
+
 static int pc_save_write_gci_to(const char* gci_path, const char* tmp_path);
 
 /* mCD_get_land_copyProtect */
@@ -421,8 +437,16 @@ static int pc_save_write_gci_to(const char* gci_path, const char* tmp_path) {
         return FALSE;
     }
 
-    fflush(fp);
-    fclose(fp);
+    {
+        int flush_ok = pc_save_flush_file(fp);
+        int close_ok = fclose(fp) == 0;
+        if (!flush_ok || !close_ok) {
+            OSReport("[PC] GCI save: failed to flush temp file '%s'\n", tmp_path);
+            remove(tmp_path);
+            free(file_data);
+            return FALSE;
+        }
+    }
     free(file_data);
 
     pc_save_rotate_backups(gci_path);
@@ -446,9 +470,6 @@ static int pc_save_write_gci_to(const char* gci_path, const char* tmp_path) {
 static int pc_save_read_gci(const char* path) {
     FILE* fp;
     CARDDir dir_hdr;
-    u8* file_data;
-    Save_t* save_src;
-    u32 offset;
     long file_size;
 
     fp = fopen(path, "rb");
@@ -483,26 +504,19 @@ static int pc_save_read_gci(const char* path) {
         return FALSE;
     }
 
-    file_data = (u8*)malloc(GCI_FILE_DATA_SIZE);
-    if (!file_data) {
-        OSReport("[PC] GCI: malloc(%u) failed\n", (unsigned)GCI_FILE_DATA_SIZE);
+    if (file_size < (long)(GCI_HEADER_SIZE + GCI_FILE_DATA_SIZE)) {
+        OSReport("[PC] GCI: file is truncated\n");
         fclose(fp);
         return FALSE;
     }
 
-    if (fread(file_data, GCI_FILE_DATA_SIZE, 1, fp) != 1) {
-        OSReport("[PC] GCI: failed to read %u bytes of file data (file may be too small)\n",
-                 (unsigned)GCI_FILE_DATA_SIZE);
+    if (!pc_save_read_exact_at(fp, GCI_HEADER_SIZE + GCI_SAVE_MAIN_OFFSET,
+                               &common_data.save.save, sizeof(Save_t))) {
+        OSReport("[PC] GCI: failed to read main save block\n");
         fclose(fp);
-        free(file_data);
         return FALSE;
     }
-    fclose(fp);
-
-    save_src = (Save_t*)(file_data + GCI_SAVE_MAIN_OFFSET);
-    pc_save_bswap_verify_roundtrip((const u8*)save_src, sizeof(Save_t));
-
-    memcpy(&common_data.save.save, save_src, sizeof(Save_t));
+    pc_save_bswap_verify_roundtrip((const u8*)&common_data.save.save, sizeof(Save_t));
     pc_save_bswap(&common_data.save.save, PC_BSWAP_FROM_BE);
 
     /* --- Load ARAM blocks from Others section ---
@@ -511,14 +525,23 @@ static int pc_save_read_gci(const char* path) {
      * Detect by checking the landid field at offset 2 of the first block:
      * if it matches save's land_info.id, first block is mail (GC order). */
     {
-        u8* others_ptr = file_data + GCI_OTHERS_OFFSET;
         u32 block_start = ALIGN_NEXT(sizeof(MemcardHeader_c) + 32, 32);
-        u16 first_landid = ((u16)others_ptr[block_start + 2] << 8) | others_ptr[block_start + 3];
+        u8 landid_bytes[2];
+        u16 first_landid;
         u16 save_land_id = common_data.save.save.land_info.id;
-        int gc_order = (first_landid == save_land_id && save_land_id != 0);
+        int gc_order;
         u32 mail_size = l_aram_alloc_size_table[mCD_ARAM_DATA_MAIL];
         u32 orig_size = l_aram_alloc_size_table[mCD_ARAM_DATA_ORIGINAL];
         u32 off_mail, off_orig, off_diary;
+
+        if (!pc_save_read_exact_at(fp, GCI_HEADER_SIZE + block_start + 2,
+                                   landid_bytes, sizeof(landid_bytes))) {
+            OSReport("[PC] GCI: failed to read ARAM layout marker\n");
+            fclose(fp);
+            return FALSE;
+        }
+        first_landid = ((u16)landid_bytes[0] << 8) | landid_bytes[1];
+        gc_order = first_landid == save_land_id && save_land_id != 0;
 
         if (gc_order) {
             /* Dolphin/GC save: mail, original, diary */
@@ -533,28 +556,39 @@ static int pc_save_read_gci(const char* path) {
         }
 
         if (l_aram_block_p_table[mCD_ARAM_DATA_MAIL]) {
-            pc_save_bswap_verify_roundtrip_mail(others_ptr + off_mail, mail_size);
-            memcpy(l_aram_block_p_table[mCD_ARAM_DATA_MAIL], others_ptr + off_mail, mail_size);
+            if (!pc_save_read_exact_at(fp, GCI_HEADER_SIZE + off_mail,
+                                       l_aram_block_p_table[mCD_ARAM_DATA_MAIL], mail_size)) {
+                fclose(fp);
+                return FALSE;
+            }
+            pc_save_bswap_verify_roundtrip_mail(l_aram_block_p_table[mCD_ARAM_DATA_MAIL], mail_size);
             pc_save_bswap_keep_mail((mCD_keep_mail_c*)l_aram_block_p_table[mCD_ARAM_DATA_MAIL],
                                     PC_BSWAP_FROM_BE);
         }
         if (l_aram_block_p_table[mCD_ARAM_DATA_ORIGINAL]) {
-            pc_save_bswap_verify_roundtrip_original(others_ptr + off_orig, orig_size);
-            memcpy(l_aram_block_p_table[mCD_ARAM_DATA_ORIGINAL], others_ptr + off_orig, orig_size);
+            if (!pc_save_read_exact_at(fp, GCI_HEADER_SIZE + off_orig,
+                                       l_aram_block_p_table[mCD_ARAM_DATA_ORIGINAL], orig_size)) {
+                fclose(fp);
+                return FALSE;
+            }
+            pc_save_bswap_verify_roundtrip_original(l_aram_block_p_table[mCD_ARAM_DATA_ORIGINAL], orig_size);
             pc_save_bswap_keep_original((mCD_keep_original_c*)l_aram_block_p_table[mCD_ARAM_DATA_ORIGINAL],
                                         PC_BSWAP_FROM_BE);
         }
         if (l_aram_block_p_table[mCD_ARAM_DATA_DIARY]) {
-            pc_save_bswap_verify_roundtrip_diary(others_ptr + off_diary,
-                                                  l_aram_alloc_size_table[mCD_ARAM_DATA_DIARY]);
-            memcpy(l_aram_block_p_table[mCD_ARAM_DATA_DIARY], others_ptr + off_diary,
-                   l_aram_alloc_size_table[mCD_ARAM_DATA_DIARY]);
+            u32 diary_size = l_aram_alloc_size_table[mCD_ARAM_DATA_DIARY];
+            if (!pc_save_read_exact_at(fp, GCI_HEADER_SIZE + off_diary,
+                                       l_aram_block_p_table[mCD_ARAM_DATA_DIARY], diary_size)) {
+                fclose(fp);
+                return FALSE;
+            }
+            pc_save_bswap_verify_roundtrip_diary(l_aram_block_p_table[mCD_ARAM_DATA_DIARY], diary_size);
             pc_save_bswap_keep_diary((mCD_keep_diary_c*)l_aram_block_p_table[mCD_ARAM_DATA_DIARY],
                                      PC_BSWAP_FROM_BE);
         }
     }
 
-    free(file_data);
+    fclose(fp);
     return TRUE;
 }
 
