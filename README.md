@@ -1,125 +1,156 @@
-# Animal Crossing PC Port
+# ACGC-3DS
 
-A native PC port of Animal Crossing (GameCube) built on top of the [ac-decomp](https://github.com/ACreTeam/ac-decomp) decompilation project.
+ACGC-3DS is an experimental native Nintendo 3DS port of *Animal Crossing*
+for the GameCube. It is based on
+[ACreTeam's `ac-decomp`](https://github.com/ACreTeam/ac-decomp) and the
+[ACGC PC port](https://github.com/flyngmt/ACGC-PC-Port).
 
-The game's original C code runs natively on x86, with a custom translation layer replacing the GameCube's GX graphics API with OpenGL 3.3.
+The decompiled game code is built for ARM and connected to native 3DS services:
+Citro3D/libctru for graphics and system integration, `hid` for input, `ndsp`
+for audio, and the SD card for disc-image access and saves.
 
-This repository does not contain any game assets or assembly whatsoever. An existing copy of the game is required.
+> [!IMPORTANT]
+> This port is a work in progress. The complete selected runtime builds and
+> launches, but rendering and gameplay are not yet fully correct. Expect
+> missing or incorrect surfaces, incomplete GameCube GX behavior, and other
+> compatibility issues.
 
-Supported versions: GAFE01_00: Rev 0 (USA)
+This repository does not include Nintendo game data. You must supply your own
+legally obtained disc image. The currently supported revision is
+`GAFE01_00` (USA, Rev 0) in ISO, GCM, or CISO format.
 
-## Quick Start (Pre-built Release)
+## Current Features
 
-Pre-built releases are available on the [Releases](https://github.com/flyngmt/ACGC-PC-Port/releases) page. No build tools required.
+- Native Nintendo 3DS executable; no emulator is bundled
+- Full selected decompiled runtime linked into the 3DS application
+- ISO, GCM, and CISO disc-image reading from the SD card
+- Citro3D-backed translation for the implemented GameCube GX paths
+- Native Circle Pad, C-Stick, button, and trigger input
+- `ndsp` audio output
+- GCI-compatible save directories on the SD card
+- Dolphin-style DDS replacement textures, including uncompressed RGBA/BGRA,
+  BC1/DXT1, and BC3/DXT5
+- Homebrew Launcher (`.3dsx`) and extended-memory CIA build targets
 
-1. Download and extract the latest release zip
-2. Place your disc image in the `rom/` folder
-3. Run `AnimalCrossing.exe`
+## Requirements
 
-The game reads all assets directly from the disc image at startup. No extraction or preprocessing step is needed.
+- [devkitPro](https://devkitpro.org/) with the 3DS development packages
+- CMake (provided by the devkitPro environment)
+- A legally obtained `GAFE01_00` Animal Crossing disc image
 
-## Building from Source
+Install the required devkitPro packages from its MSYS2 shell:
 
-Only needed if you want to modify the code. Otherwise, use the [pre-built release](https://github.com/flyngmt/ACGC-PC-Port/releases) above.
-
-### Requirements
-
-- **MSYS2** (https://www.msys2.org/)
-- **Animal Crossing (USA) disc image** (ISO, GCM, or CISO format)
-
-### MSYS2 Packages
-
-Open **MSYS2 MINGW32** from your Start menu and install:
-
-```bash
-pacman -S mingw-w64-i686-gcc mingw-w64-i686-cmake mingw-w64-i686-SDL2 mingw-w64-i686-make
+```sh
+pacman -S 3ds-dev citro3d citro2d
 ```
 
-### Build Steps
+Creating an installable CIA also requires `makerom` v0.18 from Project_CTR
+and `bannertool` v1.2.0 to be available on `PATH`.
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/flyngmt/ACGC-PC-Port.git
-   cd ACGC-PC-Port
-   ```
+## Building
 
-2. Build (from **MSYS2 MINGW32** shell):
-   ```bash
-   ./build_pc.sh
-   ```
+Clone the repository and build from `ports/3ds` inside the devkitPro shell:
 
-3. Place your disc image in the `rom/` folder:
-   ```
-   pc/build32/bin/rom/YourGame.ciso
-   ```
+```sh
+git clone https://github.com/RobinVRL/ACGC-3DS.git
+cd ACGC-3DS/ports/3ds
+make
+```
 
-4. Run:
-   ```bash
-   pc/build32/bin/AnimalCrossing.exe
-   ```
+The normal build produces `acgc_3ds.3dsx`. To compile only the native
+game-entry and frame-loop boundary as a quick toolchain check, run:
 
-## Controls
+```sh
+make runtime-smoke
+```
 
-Keyboard bindings are customizable via `keybindings.ini` (next to the executable). Mouse buttons (Mouse1/Mouse2/Mouse3) can also be assigned.
+To build the extended-memory CIA:
 
-### Keyboard (defaults)
+```sh
+make cia
+```
 
-| Key | Action |
-|-----|--------|
-| WASD | Move (left stick) |
-| Arrow Keys | Camera (C-stick) |
-| Space | A button |
-| Left Shift | B button |
-| Enter | Start |
-| X | X button |
-| Y | Y button |
-| Q / E | L / R triggers |
-| Z | Z trigger |
-| I / J / K / L | D-pad (up/left/down/right) |
+This produces `acgc_3ds_extended.cia` using the Old 3DS Dev2 80 MiB memory
+layout. Install it with a compatible title manager such as FBI. Entering or
+leaving this memory mode may reboot an Old 3DS; that behavior is expected.
 
-### Gamepad
+## SD Card Layout
 
-SDL2 game controllers are supported with automatic hotplug detection. Button mapping follows the standard GameCube layout.
+Copy `acgc_3ds.3dsx` to the location used by your Homebrew Launcher. The port
+creates and uses the following directories:
 
-## Command Line Options
+```text
+sdmc:/3ds/acgc/
+|-- rom/       # Place one supported ISO, GCM, or CISO image here
+|-- save/      # GCI-compatible card_a and card_b save directories
+|-- textures/  # Optional Dolphin-format DDS texture replacements
+`-- dump/      # Optional DOL/REL diagnostic dumps
+```
 
-| Flag | Description |
-|------|-------------|
-| `--verbose` | Enable diagnostic logging |
-| `--no-framelimit` | Disable frame limiter (unlocked FPS) |
-| `--model-viewer [index]` | Launch debug model viewer (structures, NPCs, fish) |
-| `--time HOUR` | Override in-game hour (0-23) |
+Texture subdirectories are scanned recursively. Disc images, extracted game
+data, save files, and locally built executables must not be committed to this
+repository.
 
-## Settings
+## Launching
 
-Graphics settings are stored in `settings.ini` and can be edited manually or through the in-game options menu:
+1. Put your supported disc image in `sdmc:/3ds/acgc/rom/`.
+2. Launch `acgc_3ds.3dsx`, or start the installed extended-memory CIA.
+3. Wait for the bottom-screen probe to display `Disc reader: OK`.
+4. Press X to load the disc assets and enter the game runtime.
 
-- Resolution (up to 4K)
-- Fullscreen toggle
-- VSync
-- MSAA (anti-aliasing)
-- Texture Loading/Caching (No need to enable if you aren't using a texture pack)
+Controls on the startup probe:
 
-## Texture Packs
+| Button | Action |
+|---|---|
+| X | Load the detected disc image and start the runtime |
+| Y | Dump the extracted DOL and REL to `sdmc:/3ds/acgc/dump/` |
+| Select | Rescan the ROM directory |
+| Start | Exit |
 
-Custom textures can be placed in `texture_pack/`. Dolphin-compatible format (XXHash64, DDS).
+## In-Game Controls
 
-I highly recommend the following texture pack from the talented artists of Animal Crossing community.
+| Nintendo 3DS input | GameCube input |
+|---|---|
+| Circle Pad | Control Stick |
+| C-Stick | C-Stick |
+| A / B / X / Y | A / B / X / Y |
+| L / R | L / R |
+| ZL | Z |
+| D-Pad | D-Pad |
+| Start | Start |
 
-[HD Texture Pack](https://forums.dolphin-emu.org/Thread-animal-crossing-hd-texture-pack-version-23-feb-22nd-2026)
+The C-Stick and ZL mappings require hardware that provides those inputs, such
+as a New Nintendo 3DS.
 
-## Save Data
+## Project Status and Limitations
 
-Save files are stored in `save/` using the standard GCI format, compatible with Dolphin emulator saves. Place a Dolphin GCI export in the save directory to import an existing save.
+The port currently compiles the selected native runtime and can enter its frame
+loop. The GX compatibility layer handles core matrix, viewport, vertex,
+texture, depth, culling, and several TEV paths, but it is not a complete
+GameCube GPU implementation. Fog, EFB behavior, display lists, uncommon
+primitives, and complex TEV combinations may be reduced, approximated, or
+unsupported. The bundled NES emulator is disabled.
 
-## Credits
+Memory and GPU feature limits remain the main constraints, especially on an
+Old Nintendo 3DS. Testing in an emulator does not replace testing on hardware.
+See [`ports/3ds/README.md`](ports/3ds/README.md) for lower-level implementation
+notes and milestones.
 
-This project would not be possible without the work of the [ACreTeam](https://github.com/ACreTeam) decompilation team. Their complete C decompilation of Animal Crossing is the foundation this port is built on.
+## Repository Layout
 
-## AI Notice
+- `ports/3ds/` - 3DS build system, native platform services, GX translator,
+  icons, banner assets, and port documentation
+- `src/` and `include/` - decompiled game code plus 3DS compatibility changes
+- `pc/` - shared platform-neutral compatibility code inherited from the PC port
+- `config/`, `assets/`, and `tools/` - upstream decompilation configuration and
+  development tooling
 
-AI tools such as Claude were used in this project (PC port code only).
+## Credits and License
 
-## FAQ
+This project builds on the work of the
+[ACreTeam](https://github.com/ACreTeam) decompilation contributors and the
+[ACGC-PC-Port](https://github.com/flyngmt/ACGC-PC-Port) contributors. It also
+uses devkitPro, libctru, and Citro3D for Nintendo 3DS development.
 
-See [FAQ](FAQ.md) for more info.
+See [`LICENSE`](LICENSE) for the licenses and attribution that apply to the
+decompilation and port code.
