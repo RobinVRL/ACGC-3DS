@@ -26,6 +26,10 @@ make cia
 This creates `acgc_3ds_extended.cia` with the 80 MiB (Dev2) Old 3DS system
 mode in its exheader. Install it with FBI. Launching or exiting this build may
 reboot an Old 3DS as the system switches memory layouts; this is expected.
+The native runtime places the GameCube's full 24 MiB MEM1 arena inside a 36 MiB
+linear allocation budget, leaving 12 MiB there for renderer/audio resources.
+Its 16 MiB ARAM emulation and decoded assets use the separate ordinary heap;
+use the extended-memory CIA on Old 3DS hardware.
 
 Compile the native game-entry and frame-loop boundary with:
 
@@ -79,6 +83,9 @@ while the probe is active.
    - `acgc_3ds_save.c`: creates SD save slot directories.
    - `acgc_3ds_video.c`: owns a Citro3D shader, dynamic vertex buffer, GPU
      state, and top-screen triangle submission path.
+   - The original HUD, dialogs, inventory, and map are composited at 4:3 on
+     the top screen. The bottom screen is a touch control deck with Map,
+     Pockets, Options, and a virtual C-Stick look pad for older systems.
 6. Move platform-neutral PC replacement code behind shared headers.
 7. Compile non-rendering game/runtime units with `TARGET_3DS`.
 8. Implement enough GX translation to show the boot/logo path.

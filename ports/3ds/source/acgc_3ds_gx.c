@@ -1438,10 +1438,10 @@ static void gx_draw(void) {
         int alpha_func;
         int alpha_ref;
 
-        /* Font is the final UI layer and must neither test nor write scene
-         * depth. Other draws retain the GX depth-write state: decal overlays
-         * rely on the game's explicit multipass ordering. */
-        if (preset == ACGC_3DS_TEV_FONT_MASK) {
+        /* Explicit UI draws are composited over the world and have no depth
+         * attachment. A font-like TEV program alone is not enough to classify
+         * a draw as UI: signs and other world-space glyphs still need GX depth. */
+        if (s_render_screen) {
             draw_depth_test = GX_FALSE;
             draw_depth_write = GX_FALSE;
         }
@@ -1471,7 +1471,8 @@ static void gx_draw(void) {
                                          alpha_test, alpha_func, alpha_ref,
                                          draw_depth_test, s_depth_func,
                                          draw_depth_write,
-                                         s_color_update, s_alpha_update);
+                                         s_color_update,
+                                         s_render_screen ? GX_TRUE : s_alpha_update);
     }
     s_count = 0;
     s_expected_count = 0;
@@ -1700,6 +1701,23 @@ void pc_gx_begin_frame(void) {
             s_tex_cache[i].last_used_frame = 0;
         }
     }
+}
+void pc_gx_shutdown(void) {
+    s_count = 0;
+    s_expected_count = 0;
+    s_pending = 0;
+    for (int i = 0; i < ACGC_3DS_TEX_CACHE_SIZE; i++) {
+        gx_evict_texture_entry(&s_tex_cache[i]);
+    }
+    memset(s_tex_bindings, 0, sizeof(s_tex_bindings));
+    s_bound_texture = NULL;
+    s_bound_texture_format = 0;
+    s_bound_texture_width = 0;
+    s_bound_texture_height = 0;
+    s_bound_texture_upload_width = 0;
+    s_bound_texture_upload_height = 0;
+    s_tex_cache_next = 0;
+    s_tex_cache_frame = 1;
 }
 void pc_gx_draw_pending(void) { gx_draw(); }
 void pc_gx_set_render_screen(int bottom_screen) {

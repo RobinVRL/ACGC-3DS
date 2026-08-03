@@ -12,15 +12,15 @@
 
 extern void ac_entry(void);
 extern int boot_main(int argc, const char** argv);
+extern int g_pc_running;
 int pc_disc_init(void);
 void pc_disc_shutdown(void);
 
-/* libctru otherwise splits the process's remaining memory roughly in half and
- * may reserve up to 32 MiB for linear allocations. This port needs much more
- * ordinary heap for its 8 MiB MEM1 arena, 16 MiB ARAM emulation, and extracted
- * ROM assets. The GPU vertex buffer and texture cache fit in this smaller
- * linear reservation, leaving the balance available to malloc. */
-u32 __ctru_linear_heap_size = 12 * 1024 * 1024;
+/* Keep MEM1 out of the fragmented ordinary heap. This reserves the full
+ * 24 MiB GameCube arena plus 12 MiB for Citro3D textures, vertices, command
+ * buffers, and ndsp audio. The remaining application memory becomes the
+ * ordinary heap used by ARAM emulation and decoded ROM assets. */
+u32 __ctru_linear_heap_size = 36 * 1024 * 1024;
 
 static PrintConsole* g_launcher_console;
 
@@ -257,13 +257,14 @@ int main(int argc, char** argv) {
     /* Create the SD layout before platform initialization so the texture-pack
      * index sees a newly created /textures directory on the first launch. */
     acgc_3ds_probe_paths(&probe);
-    acgc_3ds_platform_init();
+    if (!acgc_3ds_platform_init()) return 1;
     g_launcher_console = consoleInit(GFX_BOTTOM, NULL);
 
     if (!probe.rom_found) {
         print_probe_status(&probe);
     } else {
         launch_game();
+        if (!g_pc_running) goto shutdown;
     }
 
     while (aptMainLoop()) {
@@ -289,12 +290,14 @@ int main(int argc, char** argv) {
              * launcher's Citro3D frame open underneath it. */
             acgc_3ds_platform_end_frame();
             launch_game();
+            if (!g_pc_running) break;
             continue;
         }
 
         acgc_3ds_platform_end_frame();
     }
 
+shutdown:
     acgc_3ds_disc_shutdown();
     acgc_3ds_boot_scene_reset();
     acgc_3ds_platform_shutdown();

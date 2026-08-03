@@ -271,17 +271,16 @@ static int graph_draw_finish(GRAPH* this) {
     gSPBranchList(NOW_POLY_OPA_DISP++, this->Gfx_list01);
     gSPBranchList(NOW_POLY_XLU_DISP++, this->Gfx_list09);
 #ifdef TARGET_3DS
-    /* Draw the overlay before the font list. Text and glyph symbols must be
-     * the final visual layer so window/capture textures cannot cover them. */
-    gSPBranchList(NOW_LIGHT_DISP++, this->Gfx_list04);
-    /* Overlay contains fades, wipes and capture blits. Route it to the top
-     * screen before execution; font commands may subsequently select another
-     * screen explicitly when a bottom-screen UI is active. */
-    gDPNoOpTag(NOW_OVERLAY_DISP++, PC_NOOP_3DS_SCREEN_TOP);
-    gSPBranchList(NOW_OVERLAY_DISP++, this->Gfx_list07);
-    gDPPipeSync(NOW_FONT_DISP++);
-    gDPFullSync(NOW_FONT_DISP++);
-    gSPEndDisplayList(NOW_FONT_DISP++);
+    /* Preserve the native font -> overlay ordering. Fades, wipes and capture
+     * blits intentionally cover earlier text. Route the final overlay list to
+     * the composited UI target: sending it back to the world target would make
+     * the separately presented UI texture cover those later effects again. */
+    gSPBranchList(NOW_LIGHT_DISP++, this->Gfx_list07);
+    gDPNoOpTag(NOW_FONT_DISP++, PC_NOOP_3DS_SCREEN_BOTTOM);
+    gSPBranchList(NOW_FONT_DISP++, this->Gfx_list04);
+    gDPPipeSync(NOW_OVERLAY_DISP++);
+    gDPFullSync(NOW_OVERLAY_DISP++);
+    gSPEndDisplayList(NOW_OVERLAY_DISP++);
 #else
     gSPBranchList(NOW_LIGHT_DISP++, this->Gfx_list07);
     gSPBranchList(NOW_FONT_DISP++, this->Gfx_list04);

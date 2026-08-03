@@ -7,6 +7,7 @@ int acgc_3ds_audio_init(void);
 int acgc_3ds_audio_ready(void);
 void acgc_3ds_audio_shutdown(void);
 void acgc_3ds_input_scan(void);
+void acgc_3ds_input_end_frame(void);
 void acgc_3ds_input_get(AcgcPadStatus* out);
 int acgc_3ds_save_init(void);
 int acgc_3ds_save_ready(void);
@@ -18,11 +19,17 @@ void acgc_3ds_video_shutdown(void);
 
 int acgc_3ds_platform_init(void) {
     acgc_3ds_texture_pack_init();
-    int video = acgc_3ds_video_init();
-    int save = acgc_3ds_save_init();
-    int audio = acgc_3ds_audio_init();
-
-    return video && save && audio;
+    if (!acgc_3ds_video_init()) {
+        acgc_3ds_texture_pack_shutdown();
+        return 0;
+    }
+    if (!acgc_3ds_save_init() || !acgc_3ds_audio_init()) {
+        acgc_3ds_audio_shutdown();
+        acgc_3ds_video_shutdown();
+        acgc_3ds_texture_pack_shutdown();
+        return 0;
+    }
+    return 1;
 }
 
 void acgc_3ds_platform_begin_frame(void) {
@@ -32,6 +39,7 @@ void acgc_3ds_platform_begin_frame(void) {
 
 void acgc_3ds_platform_end_frame(void) {
     acgc_3ds_video_end_frame();
+    acgc_3ds_input_end_frame();
 }
 
 void acgc_3ds_platform_shutdown(void) {
