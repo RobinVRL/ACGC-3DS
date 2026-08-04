@@ -23,12 +23,16 @@ int acgc_3ds_platform_init(void) {
         acgc_3ds_texture_pack_shutdown();
         return 0;
     }
-    if (!acgc_3ds_save_init() || !acgc_3ds_audio_init()) {
-        acgc_3ds_audio_shutdown();
+    if (!acgc_3ds_save_init()) {
         acgc_3ds_video_shutdown();
         acgc_3ds_texture_pack_shutdown();
         return 0;
     }
+
+    /* NDSP can be unavailable when DSP firmware is missing or an emulator
+     * does not expose the service. The audio backend already treats that as a
+     * silent/no-op device, so it must not prevent the game from launching. */
+    (void)acgc_3ds_audio_init();
     return 1;
 }
 
