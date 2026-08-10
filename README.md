@@ -154,3 +154,5 @@ uses devkitPro, libctru, and Citro3D for Nintendo 3DS development.
 
 See [`LICENSE`](LICENSE) for the licenses and attribution that apply to the
 decompilation and port code.
+
+This project uses AI tools, such as Claude & Codex.
