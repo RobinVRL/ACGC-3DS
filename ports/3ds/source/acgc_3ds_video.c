@@ -8,6 +8,8 @@
 #include "acgc_3ds_vshader_shbin.h"
 
 #define ACGC_3DS_MAX_FRAME_VERTICES 32768u
+#define ACGC_3DS_PRESENT_VERTICES 12u
+#define ACGC_3DS_DASHBOARD_VERTICES 2048u
 #define ACGC_3DS_SCENE_TEX_W 512
 #define ACGC_3DS_SCENE_TEX_H 256
 #define ACGC_3DS_UI_W 320
@@ -69,13 +71,6 @@ static int g_depth_write;
 static int g_color_update;
 static int g_alpha_update;
 
-/* Keep the off-screen target at its native logical size. Sub-native rendering
- * needs a different texture-origin/presentation transform; sampling the
- * upper portion of a partially used target can present only untouched pixels. */
-static int g_render_scale = 100;
-static int g_pending_render_scale = 100;
-static int g_scene_width = ACGC_3DS_WORLD_W;
-static int g_scene_height = ACGC_3DS_WORLD_H;
 static int g_active_layer = -1;
 static int g_viewport_valid;
 static u32 g_viewport_x;
@@ -154,8 +149,8 @@ static void acgc_3ds_video_bind_buffer(void) {
 
 static void acgc_3ds_video_apply_viewport(Acgc3dsRenderLayer layer,
                                            const float viewport[6]) {
-    int canvas_w = layer == ACGC_3DS_RENDER_UI ? ACGC_3DS_UI_W : g_scene_width;
-    int canvas_h = layer == ACGC_3DS_RENDER_UI ? ACGC_3DS_UI_H : g_scene_height;
+    int canvas_w = layer == ACGC_3DS_RENDER_UI ? ACGC_3DS_UI_W : ACGC_3DS_WORLD_W;
+    int canvas_h = layer == ACGC_3DS_RENDER_UI ? ACGC_3DS_UI_H : ACGC_3DS_WORLD_H;
     int x = 0;
     int y = 0;
     int w = canvas_w;
@@ -192,6 +187,8 @@ static void acgc_3ds_video_apply_viewport(Acgc3dsRenderLayer layer,
 
 static void acgc_3ds_video_select_layer(Acgc3dsRenderLayer layer,
                                          const float viewport[6]) {
+    /* Both layers use fixed logical dimensions so their viewports remain
+     * aligned when the UI is composited over the world. */
     C3D_RenderTarget* target = layer == ACGC_3DS_RENDER_UI ? g_ui : g_scene;
 
     if (g_active_layer != (int)layer) {
@@ -199,6 +196,10 @@ static void acgc_3ds_video_select_layer(Acgc3dsRenderLayer layer,
         C3D_SetScissor(GPU_SCISSOR_DISABLE, 0, 0, 0, 0);
         g_active_layer = (int)layer;
         g_viewport_valid = 0;
+        /* UI draws accumulate into a transparent, premultiplied target while
+         * world draws retain the native GX alpha equation. Force the cached
+         * blend state to be rebuilt whenever those policies switch. */
+        g_blend_state_valid = 0;
     }
     acgc_3ds_video_apply_viewport(layer, viewport);
 }
@@ -306,25 +307,8 @@ void acgc_3ds_video_enable_game_screens(void) {
     g_bottom_enabled = 1;
 }
 
-int acgc_3ds_video_get_render_scale(void) {
-    return g_render_scale;
-}
-
-void acgc_3ds_video_set_render_scale(int percent) {
-    if (percent <= 62) g_pending_render_scale = 50;
-    else if (percent <= 87) g_pending_render_scale = 75;
-    else g_pending_render_scale = 100;
-}
-
 void acgc_3ds_video_begin_frame(void) {
     if (!g_video_ready || g_frame_active) return;
-
-    /* Scale changes are committed only between FrameEnd and FrameBegin. The
-     * texture-backed target is fixed-size, so changing resolution never frees
-     * a resource that Citro3D may still reference. */
-    g_render_scale = g_pending_render_scale;
-    g_scene_width = ACGC_3DS_WORLD_W * g_render_scale / 100;
-    g_scene_height = ACGC_3DS_WORLD_H * g_render_scale / 100;
 
     if (!C3D_FrameBegin(C3D_FRAME_SYNCDRAW)) return;
     g_frame_active = 1;
@@ -396,7 +380,11 @@ int acgc_3ds_video_draw_gx_triangles(const Acgc3dsGpuVertex* vertices, size_t co
                                      int color_update,
                                      int alpha_update) {
     Acgc3dsGpuVertex* dst;
-    size_t present_reserve = g_bottom_enabled ? 12u : 6u;
+    /* End-frame always submits two top-screen quads. The dashboard adds a
+     * fixed set of shapes and bitmap glyph cells; reserve a rounded-up budget
+     * so a geometry-heavy world frame cannot truncate the bottom screen. */
+    size_t present_reserve = ACGC_3DS_PRESENT_VERTICES +
+        (g_bottom_enabled ? ACGC_3DS_DASHBOARD_VERTICES : 0u);
 
     if (!g_video_ready || !g_frame_active || vertices == NULL || count == 0 ||
         count > ACGC_3DS_MAX_FRAME_VERTICES - present_reserve || count % 3 != 0) return 0;
@@ -405,17 +393,32 @@ int acgc_3ds_video_draw_gx_triangles(const Acgc3dsGpuVertex* vertices, size_t co
     acgc_3ds_video_select_layer(layer, viewport);
     if (!g_blend_state_valid || g_blend_mode != blend_mode ||
         g_blend_src != blend_src || g_blend_dst != blend_dst) {
-        GPU_BLENDEQUATION equation = blend_mode == 3 ?
-                                     GPU_BLEND_REVERSE_SUBTRACT : GPU_BLEND_ADD;
-        GPU_BLENDFACTOR src = blend_mode == 1 ?
-                              acgc_3ds_video_blend_src(blend_src) : GPU_ONE;
-        GPU_BLENDFACTOR dst = blend_mode == 1 ?
-                              acgc_3ds_video_blend_dst(blend_dst) : GPU_ZERO;
+        GPU_BLENDEQUATION color_equation = blend_mode == 3 ?
+                                           GPU_BLEND_REVERSE_SUBTRACT : GPU_BLEND_ADD;
+        GPU_BLENDEQUATION alpha_equation = color_equation;
+        GPU_BLENDFACTOR color_src = blend_mode == 1 ?
+                                    acgc_3ds_video_blend_src(blend_src) : GPU_ONE;
+        GPU_BLENDFACTOR color_dst = blend_mode == 1 ?
+                                    acgc_3ds_video_blend_dst(blend_dst) : GPU_ZERO;
+        GPU_BLENDFACTOR alpha_src = color_src;
+        GPU_BLENDFACTOR alpha_dst = color_dst;
         if (blend_mode == 3) {
-            src = GPU_ONE;
-            dst = GPU_ONE;
+            color_src = GPU_ONE;
+            color_dst = GPU_ONE;
+            alpha_src = GPU_ONE;
+            alpha_dst = GPU_ONE;
         }
-        C3D_AlphaBlend(equation, equation, src, dst, src, dst);
+        if (layer == ACGC_3DS_RENDER_UI) {
+            /* RGB is already multiplied by the GX color blend. Track coverage
+             * separately so presenting the intermediate texture does not
+             * multiply translucent windows, fades, or glyph edges twice. */
+            alpha_equation = GPU_BLEND_ADD;
+            alpha_src = GPU_ONE;
+            alpha_dst = (blend_mode == 1 || blend_mode == 3) ?
+                        GPU_ONE_MINUS_SRC_ALPHA : GPU_ZERO;
+        }
+        C3D_AlphaBlend(color_equation, alpha_equation,
+                       color_src, color_dst, alpha_src, alpha_dst);
         g_blend_mode = blend_mode;
         g_blend_src = blend_src;
         g_blend_dst = blend_dst;
@@ -615,9 +618,11 @@ int acgc_3ds_video_draw_gx_triangles(const Acgc3dsGpuVertex* vertices, size_t co
     return 1;
 }
 
-static void acgc_3ds_video_present(C3D_RenderTarget* target, C3D_Tex* texture,
-                                   int source_w, int source_h,
-                                   int logical_w, int logical_h) {
+static void acgc_3ds_video_present_region(C3D_RenderTarget* target, C3D_Tex* texture,
+                                          int source_w, int source_h,
+                                          int logical_w, int logical_h,
+                                          int x, int y, int w, int h,
+                                          int alpha_blend) {
     Acgc3dsGpuVertex* v;
     float u0 = 0.0f;
     float u1 = (float)source_w / (float)ACGC_3DS_SCENE_TEX_W;
@@ -643,12 +648,23 @@ static void acgc_3ds_video_present(C3D_RenderTarget* target, C3D_Tex* texture,
     C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, g_modelview_uniform, &g_modelview);
     C3D_TexBind(0, texture);
     env = C3D_GetTexEnv(0);
-    C3D_TexEnvInit(env);
+    /* Presentation is a fresh fullscreen pass. GX draws may have left later
+     * TEV stages active, or disabled individual color/depth writes; none of
+     * that state is meaningful when copying the completed layer texture. */
+    for (int i = 0; i < 6; ++i) C3D_TexEnvInit(C3D_GetTexEnv(i));
     C3D_TexEnvSrc(env, C3D_Both, GPU_TEXTURE0, 0, 0);
     C3D_TexEnvFunc(env, C3D_Both, GPU_REPLACE);
-    C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD,
-                   GPU_ONE, GPU_ZERO, GPU_ONE, GPU_ZERO);
+    if (alpha_blend) {
+        /* The UI texture stores premultiplied RGB and accumulated coverage. */
+        C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD,
+                       GPU_ONE, GPU_ONE_MINUS_SRC_ALPHA,
+                       GPU_ONE, GPU_ONE_MINUS_SRC_ALPHA);
+    } else {
+        C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD,
+                       GPU_ONE, GPU_ZERO, GPU_ONE, GPU_ZERO);
+    }
     C3D_AlphaTest(false, GPU_ALWAYS, 0);
+    C3D_DepthTest(false, GPU_ALWAYS, GPU_WRITE_COLOR);
 
     v = &g_vertex_buffer[g_frame_vertex_count];
 #define SET_PRESENT_VERTEX(dst, px, py, tu, tv) do { \
@@ -657,12 +673,12 @@ static void acgc_3ds_video_present(C3D_RenderTarget* target, C3D_Tex* texture,
         (dst).s1 = (tu); (dst).t1 = (tv); \
         (dst).r = 1.0f; (dst).g = 1.0f; (dst).b = 1.0f; (dst).a = 1.0f; \
     } while (0)
-    SET_PRESENT_VERTEX(v[0], 0,         0,         u0, v0);
-    SET_PRESENT_VERTEX(v[1], 0,         logical_h, u0, v1);
-    SET_PRESENT_VERTEX(v[2], logical_w, logical_h, u1, v1);
-    SET_PRESENT_VERTEX(v[3], 0,         0,         u0, v0);
-    SET_PRESENT_VERTEX(v[4], logical_w, logical_h, u1, v1);
-    SET_PRESENT_VERTEX(v[5], logical_w, 0,         u1, v0);
+    SET_PRESENT_VERTEX(v[0], x,     y,     u0, v0);
+    SET_PRESENT_VERTEX(v[1], x,     y + h, u0, v1);
+    SET_PRESENT_VERTEX(v[2], x + w, y + h, u1, v1);
+    SET_PRESENT_VERTEX(v[3], x,     y,     u0, v0);
+    SET_PRESENT_VERTEX(v[4], x + w, y + h, u1, v1);
+    SET_PRESENT_VERTEX(v[5], x + w, y,     u1, v0);
 #undef SET_PRESENT_VERTEX
 
     GSPGPU_FlushDataCache(v, 6 * sizeof(*v));
@@ -681,6 +697,183 @@ static void acgc_3ds_video_present(C3D_RenderTarget* target, C3D_Tex* texture,
     g_depth_state_valid = 0;
 }
 
+static void acgc_3ds_video_present(C3D_RenderTarget* target, C3D_Tex* texture,
+                                   int source_w, int source_h,
+                                   int logical_w, int logical_h) {
+    acgc_3ds_video_present_region(target, texture, source_w, source_h,
+                                  logical_w, logical_h, 0, 0,
+                                  logical_w, logical_h, 0);
+}
+
+static void dashboard_vertex(Acgc3dsGpuVertex* v, float x, float y, u32 rgba) {
+    v->x = x;
+    v->y = y;
+    v->z = 0.5f;
+    v->s = v->t = v->s1 = v->t1 = 0.0f;
+    v->r = ((rgba >> 24) & 0xff) / 255.0f;
+    v->g = ((rgba >> 16) & 0xff) / 255.0f;
+    v->b = ((rgba >> 8) & 0xff) / 255.0f;
+    v->a = (rgba & 0xff) / 255.0f;
+}
+
+static void dashboard_quad(float x0, float y0, float x1, float y1, u32 rgba) {
+    Acgc3dsGpuVertex* v;
+    if (g_frame_vertex_count + 6 > ACGC_3DS_MAX_FRAME_VERTICES) return;
+    v = &g_vertex_buffer[g_frame_vertex_count];
+    dashboard_vertex(&v[0], x0, y0, rgba);
+    dashboard_vertex(&v[1], x0, y1, rgba);
+    dashboard_vertex(&v[2], x1, y1, rgba);
+    dashboard_vertex(&v[3], x0, y0, rgba);
+    dashboard_vertex(&v[4], x1, y1, rgba);
+    dashboard_vertex(&v[5], x1, y0, rgba);
+    g_frame_vertex_count += 6;
+}
+
+static unsigned dashboard_glyph(char c) {
+    switch (c) {
+        case 'A': return 0x2BED;
+        case 'C': return 0x7927;
+        case 'D': return 0x6B6E;
+        case 'E': return 0x79A7;
+        case 'I': return 0x7497;
+        case 'K': return 0x5BAD;
+        case 'L': return 0x4927;
+        case 'M': return 0x5FED;
+        case 'N': return 0x5FFD;
+        case 'O': return 0x7B6F;
+        case 'P': return 0x7BE4;
+        case 'S': return 0x79CF;
+        case 'T': return 0x7492;
+        case 'W': return 0x5BFD;
+        case 'Y': return 0x5A92;
+        default: return 0;
+    }
+}
+
+static void dashboard_text(const char* text, float x, float y, float scale, u32 rgba) {
+    while (*text != '\0') {
+        unsigned bits = dashboard_glyph(*text++);
+        int row;
+        int col;
+        for (row = 0; row < 5; ++row) {
+            for (col = 0; col < 3; ++col) {
+                if (bits & (1u << (14 - (row * 3 + col)))) {
+                    dashboard_quad(x + col * scale, y + row * scale,
+                                   x + (col + 1) * scale, y + (row + 1) * scale,
+                                   rgba);
+                }
+            }
+        }
+        x += 4.0f * scale;
+    }
+}
+
+static void dashboard_card(float x0, float x1, u32 color, int active) {
+    u32 edge = active ? 0xFFF3B8FF : 0x41644AFF;
+    dashboard_quad(x0, 38, x1, 136, edge);
+    dashboard_quad(x0 + 3, 41, x1 - 3, 133, color);
+    if (active) dashboard_quad(x0 + 7, 45, x1 - 7, 49, 0xFFFFFF80);
+}
+
+static void acgc_3ds_video_draw_dashboard(void) {
+    size_t first = g_frame_vertex_count;
+    u32 action = acgc_3ds_input_touch_action();
+    C3D_TexEnv* env;
+
+    C3D_FrameDrawOn(g_bottom);
+    C3D_SetScissor(GPU_SCISSOR_DISABLE, 0, 0, 0, 0);
+    /* 3DS LCD framebuffers are stored rotated: the 320x240 bottom screen is
+     * a 240x320 render target. Using the logical dimensions as the viewport
+     * clips 80 physical rows and scales the remainder. Keep the viewport in
+     * framebuffer space, then let OrthoTilt map our 320x240 UI coordinates.
+     * Reversing bottom/top gives the dashboard and touch input the same
+     * conventional top-left origin, instead of vertically mirroring the UI. */
+    C3D_SetViewport(0, 0, ACGC_3DS_UI_H, ACGC_3DS_UI_W);
+    Mtx_OrthoTilt(&g_projection, 0.0f, 320.0f, 240.0f, 0.0f,
+                  0.0f, 1.0f, true);
+    Mtx_Identity(&g_modelview);
+    C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, g_projection_uniform, &g_projection);
+    C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, g_modelview_uniform, &g_modelview);
+    C3D_TexBind(0, NULL);
+    env = C3D_GetTexEnv(0);
+    for (int i = 0; i < 6; ++i) C3D_TexEnvInit(C3D_GetTexEnv(i));
+    C3D_TexEnvSrc(env, C3D_Both, GPU_PRIMARY_COLOR, 0, 0);
+    C3D_TexEnvFunc(env, C3D_Both, GPU_REPLACE);
+    C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD,
+                   GPU_SRC_ALPHA, GPU_ONE_MINUS_SRC_ALPHA,
+                   GPU_ONE, GPU_ONE_MINUS_SRC_ALPHA);
+    C3D_AlphaTest(false, GPU_ALWAYS, 0);
+    C3D_DepthTest(false, GPU_ALWAYS, GPU_WRITE_COLOR);
+
+    /* A quiet, paper-and-felt control deck inspired by the game's stationery,
+     * rather than a second copy of the GameCube HUD. */
+    dashboard_quad(0, 0, 320, 240, 0xDDE8C8FF);
+    dashboard_quad(0, 0, 320, 30, 0x41644AFF);
+    dashboard_quad(0, 30, 320, 34, 0xE6B566FF);
+    dashboard_text("TOWN DECK", 105, 10, 2.0f, 0xFFF8DDFF);
+    dashboard_quad(17, 18, 25, 26, 0x9DC08BFF);
+    dashboard_quad(295, 7, 303, 15, 0x9DC08BFF);
+
+    dashboard_card(12, 104, 0x75A78DFF, action == ACGC_3DS_TOUCH_MAP);
+    dashboard_card(114, 206, 0xD79062FF, action == ACGC_3DS_TOUCH_POCKETS);
+    dashboard_card(216, 308, 0x7F91B7FF, action == ACGC_3DS_TOUCH_OPTIONS);
+
+    /* Map folds. */
+    dashboard_quad(30, 59, 48, 100, 0xFFF4D6FF);
+    dashboard_quad(50, 54, 68, 95, 0xF6E4B5FF);
+    dashboard_quad(70, 59, 88, 100, 0xFFF4D6FF);
+    dashboard_quad(48, 58, 50, 96, 0x41644AFF);
+    dashboard_quad(68, 58, 70, 96, 0x41644AFF);
+    dashboard_text("MAP", 39, 112, 2.0f, 0x173D32FF);
+
+    /* Pocket bag and clasp. */
+    dashboard_quad(137, 65, 183, 101, 0xFFF0D0FF);
+    dashboard_quad(143, 58, 177, 70, 0xFFF0D0FF);
+    dashboard_quad(151, 53, 169, 58, 0xFFF0D0FF);
+    dashboard_quad(158, 76, 163, 83, 0xA45F43FF);
+    dashboard_text("POCKETS", 130, 112, 1.5f, 0x4B291FFF);
+
+    /* Three friendly adjustment sliders. */
+    dashboard_quad(237, 62, 287, 66, 0xEEF2FFFF);
+    dashboard_quad(237, 79, 287, 83, 0xEEF2FFFF);
+    dashboard_quad(237, 96, 287, 100, 0xEEF2FFFF);
+    dashboard_quad(247, 57, 254, 71, 0xD7E0FFFF);
+    dashboard_quad(270, 74, 277, 88, 0xD7E0FFFF);
+    dashboard_quad(256, 91, 263, 105, 0xD7E0FFFF);
+    dashboard_text("OPTIONS", 231, 112, 1.5f, 0x243153FF);
+
+    /* Look pad: broad enough for a thumb, and useful on systems without a
+     * C-Stick. The highlighted half follows the current touch direction. */
+    dashboard_quad(12, 148, 308, 232, 0x41644AFF);
+    dashboard_quad(15, 151, 305, 229, 0xEDF2DEFF);
+    dashboard_quad(18, 154, 302, 190,
+                   action == ACGC_3DS_TOUCH_LOOK_UP ? 0xCFE1B7FF : 0xE4ECD4FF);
+    dashboard_quad(18, 192, 302, 226,
+                   action == ACGC_3DS_TOUCH_LOOK_DOWN ? 0xCFE1B7FF : 0xE4ECD4FF);
+    dashboard_quad(18, 154, 158, 226,
+                   action == ACGC_3DS_TOUCH_LOOK_LEFT ? 0xCFE1B7A0 : 0xFFFFFF00);
+    dashboard_quad(162, 154, 302, 226,
+                   action == ACGC_3DS_TOUCH_LOOK_RIGHT ? 0xCFE1B7A0 : 0xFFFFFF00);
+    dashboard_text("LOOK", 144, 183, 2.0f, 0x41644AFF);
+    dashboard_quad(31, 187, 47, 191, 0x41644AFF);
+    dashboard_quad(273, 187, 289, 191, 0x41644AFF);
+    dashboard_quad(158, 160, 162, 174, 0x41644AFF);
+    dashboard_quad(158, 207, 162, 221, 0x41644AFF);
+
+    if (g_frame_vertex_count > first) {
+        GSPGPU_FlushDataCache(&g_vertex_buffer[first],
+                              (g_frame_vertex_count - first) * sizeof(*g_vertex_buffer));
+        C3D_DrawArrays(GPU_TRIANGLES, (int)first,
+                       (int)(g_frame_vertex_count - first));
+    }
+    g_sent_projection_valid = 0;
+    g_sent_modelview_valid = 0;
+    g_tev_state_valid = 0;
+    g_blend_state_valid = 0;
+    g_alpha_state_valid = 0;
+    g_depth_state_valid = 0;
+}
+
 void acgc_3ds_video_end_frame(void) {
     if (!g_video_ready || !g_frame_active) return;
 
@@ -691,13 +884,15 @@ void acgc_3ds_video_end_frame(void) {
     C3D_FrameSplit(0);
     C3D_RenderTargetClear(g_top, C3D_CLEAR_COLOR, 0x102030FF, 0);
     acgc_3ds_video_present(g_top, &g_scene_texture,
-                           g_scene_width, g_scene_height,
+                           ACGC_3DS_WORLD_W, ACGC_3DS_WORLD_H,
                            ACGC_3DS_WORLD_W, ACGC_3DS_WORLD_H);
+    acgc_3ds_video_present_region(g_top, &g_ui_texture,
+                                  ACGC_3DS_UI_W, ACGC_3DS_UI_H,
+                                  ACGC_3DS_WORLD_W, ACGC_3DS_WORLD_H,
+                                  40, 0, ACGC_3DS_UI_W, ACGC_3DS_UI_H, 1);
     if (g_bottom_enabled) {
         C3D_RenderTargetClear(g_bottom, C3D_CLEAR_COLOR, 0x000000FF, 0);
-        acgc_3ds_video_present(g_bottom, &g_ui_texture,
-                               ACGC_3DS_UI_W, ACGC_3DS_UI_H,
-                               ACGC_3DS_UI_W, ACGC_3DS_UI_H);
+        acgc_3ds_video_draw_dashboard();
     }
     C3D_FrameEnd(0);
     g_frame_active = 0;
@@ -705,12 +900,20 @@ void acgc_3ds_video_end_frame(void) {
 }
 
 void acgc_3ds_video_shutdown(void) {
+    extern void pc_gx_shutdown(void);
+
     if (!g_video_ready) return;
 
     if (g_frame_active) {
         C3D_FrameEnd(0);
         g_frame_active = 0;
     }
+
+    /* Texture-cache entries may still be referenced by the last submitted
+     * command buffer. Synchronize before deleting them, and do so while the
+     * Citro3D allocator is still alive. */
+    C3D_FrameSync();
+    pc_gx_shutdown();
 
     /* Target deletion waits for/clears the queued GPU work. Keep buffers and
      * shader resources valid until that synchronization point has passed. */

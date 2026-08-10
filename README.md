@@ -26,6 +26,8 @@ legally obtained disc image. The currently supported revision is
 - ISO, GCM, and CISO disc-image reading from the SD card
 - Citro3D-backed translation for the implemented GameCube GX paths
 - Native Circle Pad, C-Stick, button, and trigger input
+- Touch control deck for Map, Pockets, Options, and camera look; the original
+  game UI remains centered and undistorted on the top screen
 - `ndsp` audio output
 - GCI-compatible save directories on the SD card
 - Dolphin-style DDS replacement textures, including uncompressed RGBA/BGRA,

@@ -64,6 +64,20 @@ typedef enum Acgc3dsRenderLayer {
     ACGC_3DS_RENDER_UI = 1
 } Acgc3dsRenderLayer;
 
+/* Touch actions exposed to both the input mapper and bottom-screen renderer.
+ * The bottom display is a controller surface; the game's own UI remains on
+ * the top display where dialogs and menus retain their original composition. */
+enum {
+    ACGC_3DS_TOUCH_NONE       = 0,
+    ACGC_3DS_TOUCH_MAP        = 1 << 0,
+    ACGC_3DS_TOUCH_POCKETS    = 1 << 1,
+    ACGC_3DS_TOUCH_OPTIONS    = 1 << 2,
+    ACGC_3DS_TOUCH_LOOK_LEFT  = 1 << 3,
+    ACGC_3DS_TOUCH_LOOK_RIGHT = 1 << 4,
+    ACGC_3DS_TOUCH_LOOK_UP    = 1 << 5,
+    ACGC_3DS_TOUCH_LOOK_DOWN  = 1 << 6
+};
+
 int acgc_3ds_platform_init(void);
 void acgc_3ds_platform_begin_frame(void);
 void acgc_3ds_platform_end_frame(void);
@@ -72,9 +86,8 @@ void acgc_3ds_platform_get_status(Acgc3dsPlatformStatus* out);
 void acgc_3ds_input_get(AcgcPadStatus* out);
 u32 acgc_3ds_input_keys_down(void);
 u32 acgc_3ds_input_keys_held(void);
+u32 acgc_3ds_input_touch_action(void);
 void acgc_3ds_video_enable_game_screens(void);
-int acgc_3ds_video_get_render_scale(void);
-void acgc_3ds_video_set_render_scale(int percent);
 int acgc_3ds_video_draw_triangles(const Acgc3dsGpuVertex* vertices, size_t count);
 int acgc_3ds_video_draw_gx_triangles(const Acgc3dsGpuVertex* vertices, size_t count,
                                      const float projection[4][4],

@@ -66,7 +66,7 @@ $(CIA_OUTPUT): $(BUILD)/$(TARGET).elf $(CIA_ICON) $(CIA_BANNER) $(CIA_RSF)
 		-icon $(CIA_ICON) -banner $(CIA_BANNER) -exefslogo
 
 $(CIA_ICON): $(APP_ICON) $(APP_ICON_SMALL) | $(BUILD)
-	$(SMDHTOOL) --create "$(APP_TITLE)" "GameCube port (extended memory)" \
+	$(SMDHTOOL) --create "$(APP_TITLE)" "Native GameCube port" \
 		"$(APP_AUTHOR)" $(APP_ICON) $@ $(APP_ICON_SMALL)
 
 $(CIA_BANNER): $(BANNER_IMAGE) $(BANNER_AUDIO) | $(BUILD)
@@ -91,8 +91,8 @@ FORCE:
 $(BUILD):
 	@mkdir -p $@
 
-$(TARGET).3dsx: $(BUILD)/$(TARGET).elf
-	3dsxtool $< $@
+$(TARGET).3dsx: $(BUILD)/$(TARGET).elf $(CIA_ICON)
+	3dsxtool $< $@ --smdh=$(CIA_ICON)
 
 $(BUILD)/$(TARGET).elf: $(addprefix $(BUILD)/,$(OFILES))
 	$(CXX) $(LDFLAGS) $^ $(LIBS) -o $@
